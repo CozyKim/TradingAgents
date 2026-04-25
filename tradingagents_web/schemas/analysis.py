@@ -62,7 +62,7 @@ class AnalysisListItem(BaseModel):
     analysis_date: date
     status: Status
     decision: Decision | None = None
-    confidence: float | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     created_at: datetime | str
     completed_at: datetime | None = None
 
@@ -75,7 +75,7 @@ class AnalysisDetail(BaseModel):
     analysis_date: date
     status: Status
     decision: Decision | None
-    confidence: float | None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     llm_provider: str
     llm_deep_model: str
     llm_quick_model: str
@@ -94,6 +94,6 @@ class AnalysisCreateResponse(BaseModel):
 
 class AnalysisListResponse(BaseModel):
     items: list[AnalysisListItem]
-    total: int
-    page: int
-    page_size: int
+    total: int = Field(ge=0)
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1, le=100)
