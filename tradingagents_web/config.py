@@ -33,3 +33,7 @@ class Settings(BaseSettings):
 
     # Misc
     cors_allow_origins: list[str] = ["http://localhost:3000"]
+
+    # Runner: when True, use a deterministic fake graph (no LLM cost). Default False.
+    fake_runner: bool = False
+    fake_runner_delay_seconds: float = 0.0
