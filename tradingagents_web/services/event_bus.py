@@ -8,11 +8,12 @@ A None sentinel is enqueued when the run finishes so consumers can stop.
 from __future__ import annotations
 
 import asyncio
+import copy
 from collections import deque
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import AsyncIterator, Literal
-
+from typing import Literal
 
 EventType = Literal["agent_message", "progress", "done", "error", "cancelled"]
 
@@ -58,7 +59,7 @@ class EventBus:
     def __init__(self, max_buffer: int = 500) -> None:
         self._max = max_buffer
         self._history: dict[str, deque[AnalysisEvent]] = {}
-        self._subs: dict[str, set[asyncio.Queue]] = {}
+        self._subs: dict[str, set[asyncio.Queue[AnalysisEvent | None]]] = {}
         self._counters: dict[str, int] = {}
         self._finished: set[str] = set()
 
@@ -77,7 +78,7 @@ class EventBus:
         """
         seq = self._counters.get(run_id, 0) + 1
         self._counters[run_id] = seq
-        stamped = AnalysisEvent(type=event.type, data=event.data, seq=seq)
+        stamped = AnalysisEvent(type=event.type, data=copy.copy(event.data), seq=seq)
 
         buf = self._history.setdefault(run_id, deque(maxlen=self._max))
         buf.append(stamped)
@@ -122,7 +123,7 @@ class EventBus:
         return run_id in self._finished
 
     @asynccontextmanager
-    async def subscribe(self, run_id: str) -> AsyncIterator[asyncio.Queue]:
+    async def subscribe(self, run_id: str) -> AsyncIterator[asyncio.Queue[AnalysisEvent | None]]:
         """Async context manager that yields a queue for the given run.
 
         On entry the current history is replayed into the queue, followed by
@@ -142,7 +143,7 @@ class EventBus:
             ...     while (ev := await queue.get()) is not None:
             ...         process(ev)
         """
-        queue: asyncio.Queue = asyncio.Queue()
+        queue: asyncio.Queue[AnalysisEvent | None] = asyncio.Queue()
 
         # Replay history so late subscribers catch up
         for ev in self.history(run_id):
@@ -155,7 +156,11 @@ class EventBus:
         try:
             yield queue
         finally:
-            self._subs.get(run_id, set()).discard(queue)
+            subs = self._subs.get(run_id)
+            if subs is not None:
+                subs.discard(queue)
+                if not subs:
+                    self._subs.pop(run_id, None)
 
 
 # ---------------------------------------------------------------------------

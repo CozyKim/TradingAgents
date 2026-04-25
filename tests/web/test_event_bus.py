@@ -47,3 +47,12 @@ def test_publish_caps_history_per_run():
         bus.publish("run-4", AnalysisEvent(type="agent_message", data={"i": i}))
     history = bus.history("run-4")
     assert [e.data["i"] for e in history] == [2, 3, 4]
+
+
+def test_publish_isolates_caller_dict_mutation():
+    bus = EventBus()
+    payload = {"step": 1}
+    bus.publish("run-x", AnalysisEvent(type="progress", data=payload))
+    payload["step"] = 999
+    history = bus.history("run-x")
+    assert history[0].data == {"step": 1}
