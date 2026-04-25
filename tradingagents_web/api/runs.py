@@ -8,7 +8,8 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session as OrmSession
 
 from tradingagents_web.auth import get_current_user, require_xhr
@@ -17,6 +18,8 @@ from tradingagents_web.models import Analysis, User
 from tradingagents_web.schemas.analysis import (
     AnalysisCreateRequest,
     AnalysisCreateResponse,
+    AnalysisListItem,
+    AnalysisListResponse,
 )
 from tradingagents_web.services.event_bus import AnalysisEvent, get_event_bus
 from tradingagents_web.services.run_factory import make_runner
@@ -166,3 +169,71 @@ async def create_run(
     _BACKGROUND_TASKS.add(task)
     task.add_done_callback(_BACKGROUND_TASKS.discard)
     return AnalysisCreateResponse(run_id=run_id)
+
+
+@router.get("", response_model=AnalysisListResponse)
+def list_runs(
+    db: Annotated[OrmSession, Depends(get_db)],
+    _user: Annotated[User, Depends(get_current_user)],
+    ticker: str | None = None,
+    status_: Annotated[str | None, Query(alias="status")] = None,
+    decision: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> AnalysisListResponse:
+    """List analysis runs with optional filters and pagination.
+
+    Returns runs ordered by creation time (most recent first). Supports
+    filtering by ticker symbol, run status, and trading decision.
+
+    Args:
+        db: Request-scoped SQLAlchemy session (injected by FastAPI).
+        _user: Authenticated user (injected by FastAPI dependency).
+        ticker: Optional ticker symbol filter (case-insensitive, e.g. "AAPL").
+        status_: Optional status filter ("running", "completed", "failed", "cancelled").
+        decision: Optional decision filter ("BUY", "SELL", "HOLD", etc.).
+        page: Page number (1-indexed, default 1).
+        page_size: Items per page (1–100, default 20).
+
+    Returns:
+        AnalysisListResponse with paginated items, total count, and pagination info.
+
+    Raises:
+        HTTPException: 401 if not authenticated.
+    """
+    page = max(1, page)
+    page_size = max(1, min(100, page_size))
+
+    filters = []
+    if ticker:
+        filters.append(Analysis.ticker == ticker.strip().upper())
+    if status_:
+        filters.append(Analysis.status == status_)
+    if decision:
+        filters.append(Analysis.decision == decision.upper())
+
+    base = select(Analysis)
+    if filters:
+        base = base.where(*filters)
+
+    total_stmt = select(func.count()).select_from(Analysis)
+    if filters:
+        total_stmt = total_stmt.where(*filters)
+    total_count = db.execute(total_stmt).scalar_one()
+
+    rows = (
+        db.execute(
+            base.order_by(desc(Analysis.created_at), desc(Analysis.id))
+            .limit(page_size)
+            .offset((page - 1) * page_size)
+        )
+        .scalars()
+        .all()
+    )
+
+    return AnalysisListResponse(
+        items=[AnalysisListItem.model_validate(r) for r in rows],
+        total=total_count,
+        page=page,
+        page_size=page_size,
+    )
