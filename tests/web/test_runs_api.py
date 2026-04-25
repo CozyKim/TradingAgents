@@ -177,3 +177,28 @@ def test_get_run_detail_404(app_with_test_db, client):
     client = _logged_in_client(app_with_test_db, client)
     r = client.get("/api/runs/missing", headers={"X-Requested-With": "fetch"})
     assert r.status_code == 404
+
+
+def test_cancel_running_marks_cancelled(app_with_test_db, client):
+    _, TestSessionLocal = app_with_test_db
+    _seed_analyses(TestSessionLocal)
+    client = _logged_in_client(app_with_test_db, client)
+
+    r = client.delete("/api/runs/r-3", headers={"X-Requested-With": "fetch"})
+    assert r.status_code == 200
+
+    db = TestSessionLocal()
+    try:
+        from tradingagents_web.models import Analysis
+        row = db.query(Analysis).filter_by(run_id="r-3").one()
+        assert row.status == "cancelled"
+    finally:
+        db.close()
+
+
+def test_cancel_completed_run_409(app_with_test_db, client):
+    _, TestSessionLocal = app_with_test_db
+    _seed_analyses(TestSessionLocal)
+    client = _logged_in_client(app_with_test_db, client)
+    r = client.delete("/api/runs/r-1", headers={"X-Requested-With": "fetch"})
+    assert r.status_code == 409

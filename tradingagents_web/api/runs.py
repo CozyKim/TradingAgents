@@ -309,3 +309,48 @@ async def stream_run(
                 }
 
     return EventSourceResponse(gen())
+
+
+@router.delete("/{run_id}")
+def cancel_run(
+    run_id: str,
+    db: Annotated[OrmSession, Depends(get_db)],
+    _user: Annotated[User, Depends(get_current_user)],
+    _csrf: Annotated[None, Depends(require_xhr)] = None,
+) -> dict[str, bool]:
+    """Cancel a running analysis, marking it as cancelled in the DB.
+
+    Only runs with status="running" can be cancelled. Publishes a
+    ``cancelled`` event and closes the SSE bus so streaming clients
+    receive the terminal signal immediately.
+
+    Args:
+        run_id: The unique run identifier to cancel.
+        db: Request-scoped SQLAlchemy session (injected by FastAPI).
+        _user: Authenticated user (injected by FastAPI dependency).
+        _csrf: XHR header CSRF guard (injected by FastAPI dependency).
+
+    Returns:
+        ``{"ok": True}`` on success.
+
+    Raises:
+        HTTPException: 401 if not authenticated, 403 if CSRF check fails,
+            404 if run_id not found, 409 if the run is not in "running" status.
+    """
+    row = db.query(Analysis).filter_by(run_id=run_id).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if row.status != "running":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot cancel run in status '{row.status}'",
+        )
+    row.status = "cancelled"
+    row.completed_at = datetime.now(timezone.utc)
+    db.commit()
+
+    bus = get_event_bus()
+    if not bus.is_finished(run_id):
+        bus.publish(run_id, AnalysisEvent(type="cancelled", data={}))
+        bus.finish(run_id)
+    return {"ok": True}
