@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
-
-ModelOption = Tuple[str, str]
-ProviderModeOptions = Dict[str, Dict[str, List[ModelOption]]]
+ModelOption = tuple[str, str]
+ProviderModeOptions = dict[str, dict[str, list[ModelOption]]]
 
 
 MODEL_OPTIONS: ProviderModeOptions = {
@@ -21,6 +19,18 @@ MODEL_OPTIONS: ProviderModeOptions = {
             ("GPT-5.2 - Strong reasoning, cost-effective", "gpt-5.2"),
             ("GPT-5.4 Mini - Fast, strong coding and tool use", "gpt-5.4-mini"),
             ("GPT-5.4 Pro - Most capable, expensive ($30/$180 per 1M tokens)", "gpt-5.4-pro"),
+        ],
+    },
+    "codex_oauth": {
+        "quick": [
+            ("GPT-5.5 - Codex OAuth default", "gpt-5.5"),
+            ("GPT-5.4 Mini - Fast Codex OAuth option", "gpt-5.4-mini"),
+            ("GPT-5.1 Codex Max - ChatGPT/Codex OAuth", "gpt-5.1-codex-max"),
+        ],
+        "deep": [
+            ("GPT-5.5 - Codex OAuth default", "gpt-5.5"),
+            ("GPT-5.4 - Strong Codex OAuth option", "gpt-5.4"),
+            ("GPT-5.1 Codex Max - ChatGPT/Codex OAuth", "gpt-5.1-codex-max"),
         ],
     },
     "anthropic": {
@@ -115,12 +125,12 @@ MODEL_OPTIONS: ProviderModeOptions = {
 }
 
 
-def get_model_options(provider: str, mode: str) -> List[ModelOption]:
+def get_model_options(provider: str, mode: str) -> list[ModelOption]:
     """Return shared model options for a provider and selection mode."""
     return MODEL_OPTIONS[provider.lower()][mode]
 
 
-def get_known_models() -> Dict[str, List[str]]:
+def get_known_models() -> dict[str, list[str]]:
     """Build known model names from the shared CLI catalog."""
     return {
         provider: sorted(

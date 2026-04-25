@@ -147,6 +147,14 @@ export OPENROUTER_API_KEY=...      # OpenRouter
 export ALPHA_VANTAGE_API_KEY=...   # Alpha Vantage
 ```
 
+Codex OAuth is also available for local, single-user research workflows using a ChatGPT Plus/Pro account with Codex access. This provider uses the ChatGPT/Codex consumer backend rather than the public OpenAI API, so it does not require `OPENAI_API_KEY` and is not intended for production or multi-user hosting.
+
+```bash
+python -m tradingagents.llm_clients.codex_oauth login
+# If the browser callback port is unavailable:
+python -m tradingagents.llm_clients.codex_oauth login --manual
+```
+
 For enterprise providers (e.g. Azure OpenAI, AWS Bedrock), copy `.env.enterprise.example` to `.env.enterprise` and fill in your credentials.
 
 For local models, configure Ollama with `llm_provider: "ollama"` in your config.
@@ -207,7 +215,7 @@ from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
 
 config = DEFAULT_CONFIG.copy()
-config["llm_provider"] = "openai"        # openai, google, anthropic, xai, openrouter, ollama
+config["llm_provider"] = "openai"        # openai, codex_oauth, google, anthropic, xai, openrouter, ollama
 config["deep_think_llm"] = "gpt-5.4"     # Model for complex reasoning
 config["quick_think_llm"] = "gpt-5.4-mini" # Model for quick tasks
 config["max_debate_rounds"] = 2
@@ -215,6 +223,14 @@ config["max_debate_rounds"] = 2
 ta = TradingAgentsGraph(debug=True, config=config)
 _, decision = ta.propagate("NVDA", "2026-01-15")
 print(decision)
+```
+
+For Codex OAuth:
+
+```python
+config["llm_provider"] = "codex_oauth"
+config["deep_think_llm"] = "gpt-5.5"
+config["quick_think_llm"] = "gpt-5.4-mini"
 ```
 
 See `tradingagents/default_config.py` for all configuration options.
