@@ -112,7 +112,6 @@ web/
     "bcrypt>=4.1",
     "cryptography>=43.0",
     "fastapi>=0.115",
-    "itsdangerous>=2.2",
     "pydantic-settings>=2.5",
     "python-multipart>=0.0.9",
     "sqlalchemy>=2.0",
