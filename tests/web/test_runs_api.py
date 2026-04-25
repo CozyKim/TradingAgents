@@ -159,3 +159,21 @@ def test_list_runs_pagination(app_with_test_db, client):
     body = r.json()
     assert len(body["items"]) == 2
     assert body["total"] == 3
+
+
+def test_get_run_detail_returns_full_state(app_with_test_db, client):
+    _, TestSessionLocal = app_with_test_db
+    _seed_analyses(TestSessionLocal)
+    client = _logged_in_client(app_with_test_db, client)
+    r = client.get("/api/runs/r-1", headers={"X-Requested-With": "fetch"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["run_id"] == "r-1"
+    assert body["decision"] == "BUY"
+    assert body["analysts"] == ["market"]
+
+
+def test_get_run_detail_404(app_with_test_db, client):
+    client = _logged_in_client(app_with_test_db, client)
+    r = client.get("/api/runs/missing", headers={"X-Requested-With": "fetch"})
+    assert r.status_code == 404
