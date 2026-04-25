@@ -47,7 +47,7 @@ def test_m1_happy_path(client: TestClient) -> None:
     assert client.get("/api/auth/me").status_code == 401
 
     # 2. Login
-    r = client.post("/api/auth/login", json={"password": "hunter2"})
+    r = client.post("/api/auth/login", json={"password": "hunter2"}, headers={"X-Requested-With": "fetch"})
     assert r.status_code == 200
 
     # 3. /me succeeds
@@ -56,7 +56,7 @@ def test_m1_happy_path(client: TestClient) -> None:
     assert me.json() == {"id": 1}
 
     # 4. Logout
-    out = client.post("/api/auth/logout")
+    out = client.post("/api/auth/logout", headers={"X-Requested-With": "fetch"})
     assert out.status_code == 200
 
     # 5. /me again → 401
@@ -64,5 +64,5 @@ def test_m1_happy_path(client: TestClient) -> None:
 
 
 def test_m1_invalid_password_returns_401(client: TestClient) -> None:
-    r = client.post("/api/auth/login", json={"password": "wrong"})
+    r = client.post("/api/auth/login", json={"password": "wrong"}, headers={"X-Requested-With": "fetch"})
     assert r.status_code == 401

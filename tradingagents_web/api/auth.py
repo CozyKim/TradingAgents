@@ -9,6 +9,7 @@ from tradingagents_web.auth import (
     create_session,
     delete_session,
     get_current_user,
+    require_xhr,
     verify_password,
 )
 from tradingagents_web.config import Settings
@@ -36,6 +37,7 @@ def login(
     body: LoginRequest,
     response: Response,
     db: Annotated[Session, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_xhr)] = None,
 ) -> LoginResponse:
     user = db.query(User).first()
     if user is None:
@@ -52,7 +54,7 @@ def login(
         value=token,
         max_age=_settings.session_max_age_seconds,
         httponly=True,
-        secure=False,  # set True in production behind TLS
+        secure=_settings.cookie_secure,
         samesite="strict",
         path="/",
     )
@@ -64,11 +66,18 @@ def logout(
     request: Request,
     response: Response,
     db: Annotated[Session, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_xhr)] = None,
 ) -> dict[str, bool]:
     token = request.cookies.get(_settings.session_cookie_name)
     if token:
         delete_session(db, token)
-    response.delete_cookie(key=_settings.session_cookie_name, path="/")
+    response.delete_cookie(
+        key=_settings.session_cookie_name,
+        path="/",
+        httponly=True,
+        secure=_settings.cookie_secure,
+        samesite="strict",
+    )
     return {"ok": True}
 
 

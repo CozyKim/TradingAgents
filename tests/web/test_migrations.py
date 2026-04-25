@@ -11,7 +11,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 def test_migrations_run_clean(tmp_path: Path, monkeypatch) -> None:
     db_file = tmp_path / "mig.db"
     monkeypatch.setenv("WEB_DATABASE_URL", f"sqlite:///{db_file}")
-    monkeypatch.setenv("WEB_SESSION_SECRET", "x" * 32)
 
     # Use `python -m alembic` so the test does not depend on `alembic` being
     # on PATH (Windows / non-activated venvs / nested test runners).

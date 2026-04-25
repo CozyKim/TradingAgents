@@ -1,9 +1,35 @@
 """FastAPI application factory and entrypoint."""
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from tradingagents_web.api import health
 from tradingagents_web.config import Settings
+
+
+class SessionRefreshMiddleware(BaseHTTPMiddleware):
+    """Re-issue the session cookie with a fresh max-age on every successful
+    response, so the browser cookie expiry slides in lockstep with the DB row.
+    """
+
+    def __init__(self, app, settings: Settings) -> None:
+        super().__init__(app)
+        self._settings = settings
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        token = request.cookies.get(self._settings.session_cookie_name)
+        if token and response.status_code < 400:
+            response.set_cookie(
+                key=self._settings.session_cookie_name,
+                value=token,
+                max_age=self._settings.session_max_age_seconds,
+                httponly=True,
+                secure=self._settings.cookie_secure,
+                samesite="strict",
+                path="/",
+            )
+        return response
 
 
 def create_app() -> FastAPI:
@@ -21,6 +47,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(SessionRefreshMiddleware, settings=settings)
     app.include_router(health.router)
     from tradingagents_web.api import auth as auth_api
     app.include_router(auth_api.router)

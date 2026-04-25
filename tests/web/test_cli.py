@@ -15,7 +15,6 @@ def cli_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """
     db_file = tmp_path / "cli.db"
     monkeypatch.setenv("WEB_DATABASE_URL", f"sqlite:///{db_file}")
-    monkeypatch.setenv("WEB_SESSION_SECRET", "x" * 32)
     monkeypatch.setenv("ENCRYPTION_KEY", "y" * 44)
 
     # Reload db so engine is rebuilt against the new env var.

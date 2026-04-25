@@ -24,9 +24,9 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default_factory=lambda: Path.home() / ".tradingagents")
 
     # Auth / sessions
-    session_secret: SecretStr = SecretStr("change-me-in-production-32chars-min")
     session_cookie_name: str = "tradingagents_session"
     session_max_age_seconds: int = 30 * 24 * 3600  # 30 days sliding
+    cookie_secure: bool = False  # set True (via WEB_COOKIE_SECURE=true) in production behind TLS
 
     # Encryption (for stored API keys, used in M2+)
     encryption_key: SecretStr = SecretStr("")

@@ -16,6 +16,7 @@ export async function api<T = unknown>(
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      "X-Requested-With": "fetch",
       ...init.headers,
     },
     ...init,

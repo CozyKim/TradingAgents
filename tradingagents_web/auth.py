@@ -89,3 +89,16 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User missing")
     sliding_extend(db, sess)
     return user
+
+
+def require_xhr(request: Request) -> None:
+    """CSRF defense: reject requests without the X-Requested-With marker.
+
+    Combined with SameSite=Strict cookies, this blocks cross-site form POSTs
+    that browsers automatically submit but cannot inject custom headers into.
+    """
+    if request.headers.get("X-Requested-With") != "fetch":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="CSRF check failed: missing X-Requested-With",
+        )
