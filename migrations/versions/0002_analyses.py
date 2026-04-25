@@ -28,13 +28,15 @@ def upgrade() -> None:
         sa.Column("llm_provider", sa.String(length=32), nullable=False),
         sa.Column("llm_deep_model", sa.String(length=64), nullable=False),
         sa.Column("llm_quick_model", sa.String(length=64), nullable=False),
-        sa.Column("debate_rounds", sa.Integer(), nullable=False),
+        sa.Column("debate_rounds", sa.Integer(), nullable=False, server_default=sa.text("1")),
         sa.Column("analysts", sa.JSON(), nullable=False),
         sa.Column("final_state", sa.JSON(), nullable=True),
         sa.Column("error", sa.String(length=2048), nullable=True),
         sa.Column("cost_usd", sa.Float(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
+        # SQLite does not support ALTER TABLE ADD CONSTRAINT, so the unique
+        # constraint is declared inline at table-creation time.
         sa.UniqueConstraint("run_id", name="uq_analyses_run_id"),
     )
     op.create_index("ix_analyses_ticker", "analyses", ["ticker"])
