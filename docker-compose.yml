@@ -1,8 +1,10 @@
 services:
   tradingagents:
     build: .
+    image: tradingagents:dev
     env_file:
       - .env
+    profiles: ["cli"]
     volumes:
       - tradingagents_data:/home/appuser/.tradingagents
     tty: true
@@ -30,6 +32,38 @@ services:
     profiles:
       - ollama
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: tradingagents-api:dev
+    env_file: .env
+    environment:
+      WEB_DATABASE_URL: sqlite:////data/tradingagents_web.db
+    volumes:
+      - tradingagents_web_data:/data
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    image: tradingagents-web:dev
+    environment:
+      NEXT_PUBLIC_API_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
 volumes:
   tradingagents_data:
   ollama_data:
+  tradingagents_web_data:
