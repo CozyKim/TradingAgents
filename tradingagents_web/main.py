@@ -22,6 +22,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(health.router)
+    from tradingagents_web.api import auth as auth_api
+    app.include_router(auth_api.router)
     return app
 
 

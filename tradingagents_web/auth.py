@@ -1,6 +1,6 @@
 """Authentication utilities: password hashing, session tokens, FastAPI deps."""
 import secrets
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 import bcrypt
@@ -52,7 +52,11 @@ def get_session_by_token(db: OrmSession, token: str) -> SessionModel | None:
     sess = db.query(SessionModel).filter_by(id=token).first()
     if sess is None:
         return None
-    if sess.expires_at <= utcnow():
+    expires_at = sess.expires_at
+    # SQLite returns naive datetimes; normalise to UTC-aware for comparison.
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= utcnow():
         return None
     return sess
 
