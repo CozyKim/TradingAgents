@@ -68,6 +68,7 @@ def test_stream_replays_history_then_closes_when_finished(app_with_test_db, clie
 
     assert "event: agent_message" in body
     assert "event: done" in body
+    assert "event: close" in body
 
 
 def test_stream_404_when_run_missing(app_with_test_db, client):

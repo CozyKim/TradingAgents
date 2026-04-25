@@ -242,37 +242,12 @@ def list_runs(
     )
 
 
-@router.get("/{run_id}", response_model=AnalysisDetail)
-def get_run(
-    run_id: str,
-    db: Annotated[OrmSession, Depends(get_db)],
-    _user: Annotated[User, Depends(get_current_user)],
-) -> AnalysisDetail:
-    """Return full analysis detail for a single run.
-
-    Args:
-        run_id: The unique run identifier (UUID string).
-        db: Request-scoped SQLAlchemy session (injected by FastAPI).
-        _user: Authenticated user (injected by FastAPI dependency).
-
-    Returns:
-        AnalysisDetail with full run state including final_state, cost, error.
-
-    Raises:
-        HTTPException: 401 if not authenticated, 404 if run_id not found.
-    """
-    row = db.query(Analysis).filter_by(run_id=run_id).first()
-    if row is None:
-        raise HTTPException(status_code=404, detail="Run not found")
-    return AnalysisDetail.model_validate(row)
-
-
 @router.get("/{run_id}/stream")
 async def stream_run(
     run_id: str,
     db: Annotated[OrmSession, Depends(get_db)],
     _user: Annotated[User, Depends(get_current_user)],
-):
+) -> EventSourceResponse:
     """Stream analysis run events as Server-Sent Events (SSE).
 
     Replays buffered history immediately, then delivers live events as they
@@ -309,6 +284,31 @@ async def stream_run(
                 }
 
     return EventSourceResponse(gen())
+
+
+@router.get("/{run_id}", response_model=AnalysisDetail)
+def get_run(
+    run_id: str,
+    db: Annotated[OrmSession, Depends(get_db)],
+    _user: Annotated[User, Depends(get_current_user)],
+) -> AnalysisDetail:
+    """Return full analysis detail for a single run.
+
+    Args:
+        run_id: The unique run identifier (UUID string).
+        db: Request-scoped SQLAlchemy session (injected by FastAPI).
+        _user: Authenticated user (injected by FastAPI dependency).
+
+    Returns:
+        AnalysisDetail with full run state including final_state, cost, error.
+
+    Raises:
+        HTTPException: 401 if not authenticated, 404 if run_id not found.
+    """
+    row = db.query(Analysis).filter_by(run_id=run_id).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return AnalysisDetail.model_validate(row)
 
 
 @router.delete("/{run_id}")
