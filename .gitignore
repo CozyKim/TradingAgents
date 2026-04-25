@@ -220,3 +220,8 @@ __marimo__/
 
 # Cache
 **/data_cache/
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
