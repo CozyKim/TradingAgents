@@ -1,4 +1,6 @@
 """API tests for /api/runs."""
+import time
+
 import pytest
 
 from tradingagents_web.auth import create_session
@@ -56,18 +58,24 @@ def test_create_run_returns_run_id_and_persists(monkeypatch, app_with_test_db, c
         },
     )
     assert r.status_code == 201, r.text
-    body = r.json()
-    assert "run_id" in body and len(body["run_id"]) > 0
+    run_id = r.json()["run_id"]
 
     _, TestSessionLocal = app_with_test_db
-    db = TestSessionLocal()
-    try:
-        row = db.query(Analysis).filter_by(run_id=body["run_id"]).one()
-        assert row.ticker == "AAPL"
-        assert row.status in {"running", "completed"}
-        assert row.analysts == ["market", "news"]
-    finally:
-        db.close()
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        db = TestSessionLocal()
+        try:
+            row = db.query(Analysis).filter_by(run_id=run_id).one()
+            if row.status == "completed":
+                assert row.ticker == "AAPL"
+                assert row.analysts == ["market", "news"]
+                assert row.decision == "BUY"
+                assert row.final_state is not None
+                return
+        finally:
+            db.close()
+        time.sleep(0.05)
+    pytest.fail("background task did not complete within 5s")
 
 
 def test_create_run_validates_payload(app_with_test_db, client):

@@ -4,14 +4,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session as OrmSession
 
 from tradingagents_web.auth import get_current_user, require_xhr
-from tradingagents_web.config import Settings
 from tradingagents_web.db import SessionLocal, get_db
 from tradingagents_web.models import Analysis, User
 from tradingagents_web.schemas.analysis import (
@@ -24,7 +24,22 @@ from tradingagents_web.services.runner import RunRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/runs", tags=["runs"])
-_settings = Settings()
+
+# Module-level session factory — tests override this via set_background_session_factory.
+_session_factory: Callable[[], OrmSession] = SessionLocal
+
+# Strong references to background tasks so the GC doesn't collect them mid-flight.
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
+def set_background_session_factory(factory: Callable[[], OrmSession]) -> None:
+    """Override the SessionLocal used by background tasks (tests use this).
+
+    Args:
+        factory: A zero-argument callable that returns a new SQLAlchemy session.
+    """
+    global _session_factory
+    _session_factory = factory
 
 
 def _resolve_models(req: AnalysisCreateRequest) -> tuple[str, str, str]:
@@ -55,7 +70,7 @@ async def _execute_and_persist(run_id: str, request: RunRequest) -> None:
         request: The fully populated RunRequest describing the run.
     """
     runner = make_runner()
-    db = SessionLocal()
+    db = _session_factory()
     try:
         try:
             result = await runner.run(request)
@@ -77,11 +92,13 @@ async def _execute_and_persist(run_id: str, request: RunRequest) -> None:
                 row.error = str(exc)[:2000]
                 row.completed_at = datetime.now(timezone.utc)
                 db.commit()
-            get_event_bus().publish(
-                run_id,
-                AnalysisEvent(type="error", data={"message": str(exc)}),
-            )
-            get_event_bus().finish(run_id)
+            bus = get_event_bus()
+            if not bus.is_finished(run_id):
+                bus.publish(
+                    run_id,
+                    AnalysisEvent(type="error", data={"message": str(exc)}),
+                )
+                bus.finish(run_id)
     finally:
         db.close()
 
@@ -93,7 +110,7 @@ async def _execute_and_persist(run_id: str, request: RunRequest) -> None:
 )
 async def create_run(
     payload: AnalysisCreateRequest,
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[OrmSession, Depends(get_db)],
     _user: Annotated[User, Depends(get_current_user)],
     _csrf: Annotated[None, Depends(require_xhr)] = None,
 ) -> AnalysisCreateResponse:
@@ -145,5 +162,7 @@ async def create_run(
         llm_deep_model=deep,
         llm_quick_model=quick,
     )
-    asyncio.create_task(_execute_and_persist(run_id, request))
+    task = asyncio.create_task(_execute_and_persist(run_id, request))
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
     return AnalysisCreateResponse(run_id=run_id)
