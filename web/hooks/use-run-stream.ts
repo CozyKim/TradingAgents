@@ -31,6 +31,7 @@ const init: RunStreamState = {
 };
 
 type Action =
+  | { kind: "reset" }
   | { kind: "msg"; payload: AgentMessage }
   | { kind: "progress"; step: number; total: number }
   | { kind: "done"; decision: string | null; confidence: number | null }
@@ -39,6 +40,8 @@ type Action =
 
 function reducer(s: RunStreamState, a: Action): RunStreamState {
   switch (a.kind) {
+    case "reset":
+      return init;
     case "msg":
       return { ...s, messages: [...s.messages, a.payload] };
     case "progress":
@@ -58,6 +61,8 @@ export function useRunStream(runId: string | undefined): RunStreamState {
 
   useEffect(() => {
     if (!runId) return;
+    dispatch({ kind: "reset" });
+    seqRef.current = 0;
     const close = openRunStream(runId, {
       onEvent: (type, data, raw) => {
         const seq = Number(raw.lastEventId || ++seqRef.current);

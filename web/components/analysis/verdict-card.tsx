@@ -1,6 +1,7 @@
 import { SignalBadge } from "@/components/shared/signal-badge";
+import type { Decision as RunDecision } from "@/lib/runs";
 
-type Decision = "BUY" | "OVERWEIGHT" | "HOLD" | "UNDERWEIGHT" | "SELL" | null;
+type Decision = RunDecision | null;
 
 export function VerdictCard({
   decision,

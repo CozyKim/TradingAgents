@@ -1,8 +1,9 @@
 import { cn } from "@/lib/utils";
+import type { Decision as RunDecision } from "@/lib/runs";
 
-type Decision = "BUY" | "OVERWEIGHT" | "HOLD" | "UNDERWEIGHT" | "SELL" | null;
+type Decision = RunDecision | null;
 
-const STYLES: Record<Exclude<Decision, null>, string> = {
+const STYLES: Record<RunDecision, string> = {
   BUY: "bg-signal-buy/15 text-signal-buy",
   OVERWEIGHT: "bg-signal-buy/15 text-signal-buy",
   HOLD: "bg-signal-hold/15 text-signal-hold",
