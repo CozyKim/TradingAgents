@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Protocol
@@ -223,6 +224,11 @@ class RealRunner:
         config.update(request.extra_config)
 
         rid = request.run_id
+        loop = asyncio.get_running_loop()
+
+        def _publish_threadsafe(event: AnalysisEvent) -> None:
+            """Schedule a bus.publish on the event loop from a worker thread."""
+            loop.call_soon_threadsafe(self.bus.publish, rid, event)
 
         def _build_and_stream() -> dict[str, Any]:
             """Synchronous helper executed in a thread pool via to_thread."""
@@ -234,39 +240,42 @@ class RealRunner:
             init_state = graph_obj.propagator.create_initial_state(
                 request.ticker, str(request.analysis_date)
             )
-            args = graph_obj.propagator.get_graph_args()
+            # Clone args and override stream_mode to "updates" so each chunk is
+            # {node_name: state_delta} rather than the full cumulative state.
+            stream_args = dict(graph_obj.propagator.get_graph_args())
+            stream_args["stream_mode"] = "updates"
 
-            last_chunk: dict[str, Any] | None = None
+            accumulated: dict[str, Any] = dict(init_state)
             step = 0
-            for chunk in graph_obj.graph.stream(init_state, **args):
+            for chunk in graph_obj.graph.stream(init_state, **stream_args):
+                # updates mode: chunk is {node_name: state_delta}
                 step += 1
-                last_chunk = chunk
                 for node, delta in chunk.items():
+                    if isinstance(delta, dict):
+                        accumulated.update(delta)
                     text = _summarize_delta(delta)
                     if text:
-                        self.bus.publish(
-                            rid,
+                        _publish_threadsafe(
                             AnalysisEvent(
                                 type="agent_message",
                                 data={"role": node, "text": text},
                             ),
                         )
-                self.bus.publish(
-                    rid,
+                _publish_threadsafe(
                     AnalysisEvent(
                         type="progress",
                         data={"step": step, "total": 0},
                     ),
                 )
 
-            return last_chunk or {}
+            return accumulated
 
         try:
-            final_chunk = await asyncio.to_thread(_build_and_stream)
-            final_state = final_chunk
+            final_state = await asyncio.to_thread(_build_and_stream)
             decision_text = str(final_state.get("final_trade_decision") or "")
             decision = _extract_decision(decision_text)
 
+            # This publish is on the event-loop thread, so call directly.
             self.bus.publish(
                 rid,
                 AnalysisEvent(
@@ -281,13 +290,7 @@ class RealRunner:
             )
         except Exception as exc:
             logger.exception("Real runner failed for run_id=%s", rid)
-            self.bus.publish(
-                rid,
-                AnalysisEvent(
-                    type="error",
-                    data={"message": str(exc)},
-                ),
-            )
+            self.bus.publish(rid, AnalysisEvent(type="error", data={"message": str(exc)}))
             raise
         finally:
             self.bus.finish(rid)
@@ -326,6 +329,9 @@ def _summarize_delta(delta: Any) -> str:
 def _extract_decision(text: str) -> str | None:
     """Extract a canonical trade decision keyword from free-form text.
 
+    Uses word-boundary matching so that substrings like "BUYING" or "HOUSEHOLD"
+    do not false-match "BUY" or "HOLD".
+
     Args:
         text: The raw ``final_trade_decision`` value from the graph state.
 
@@ -334,6 +340,6 @@ def _extract_decision(text: str) -> str | None:
     """
     upper = text.upper()
     for word in ("BUY", "OVERWEIGHT", "HOLD", "UNDERWEIGHT", "SELL"):
-        if word in upper:
+        if re.search(rf"\b{word}\b", upper):
             return word
     return None
