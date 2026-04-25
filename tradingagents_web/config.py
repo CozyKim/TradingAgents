@@ -1,7 +1,7 @@
 """Application configuration loaded from environment variables."""
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     # Storage
     database_url: str = "sqlite:///./tradingagents_web.db"
-    data_dir: Path = Path.home() / ".tradingagents"
+    data_dir: Path = Field(default_factory=lambda: Path.home() / ".tradingagents")
 
     # Auth / sessions
     session_secret: SecretStr = SecretStr("change-me-in-production-32chars-min")
