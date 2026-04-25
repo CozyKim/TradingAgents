@@ -1,3 +1,6 @@
+# Superpowers brainstorming session artifacts
+.superpowers/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -14,8 +17,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -217,3 +220,8 @@ __marimo__/
 
 # Cache
 **/data_cache/
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal

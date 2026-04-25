@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  html, body {
+    background-color: #0a0a0b;
+    color: #e8e8ea;
+    font-family: Inter, system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* numbers + tickers */
+  .font-num {
+    font-family: "JetBrains Mono", "SF Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  /* signal badges */
+  .badge-buy { @apply bg-signal-buy/15 text-signal-buy; }
+  .badge-sell { @apply bg-signal-sell/15 text-signal-sell; }
+  .badge-hold { @apply bg-signal-hold/15 text-signal-hold; }
+}
