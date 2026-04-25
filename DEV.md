@@ -52,3 +52,18 @@ uv run pytest tests/web/ -v       # backend
 cd web && npm run typecheck       # frontend type check
 cd web && npm run build           # frontend build
 ```
+
+## M2 — Run/History
+
+### Quick demo (no LLM cost, fake runner)
+
+1. `WEB_FAKE_RUNNER=true uv run uvicorn tradingagents_web.main:app --reload`
+2. `cd web && npm run dev`
+3. 브라우저 `http://localhost:3000`. 로그인 후:
+   - `/run`에서 ticker `AAPL`, 분석가 4종 체크 → "Run"
+   - `/run/<id>`로 자동 이동, 가짜 진행과 verdict 확인
+   - `/history`에서 방금 분석이 목록에 보이는지 확인 → 클릭 → 상세 보고서
+
+### Real run (LLM 비용 발생)
+
+`WEB_FAKE_RUNNER=false`로 두고(기본) 환경변수에 LLM provider 키 설정. M2는 `tradingagents/default_config.py`의 기본 모델을 사용한다. 모델 변경 UI는 M5에서 추가 예정.
