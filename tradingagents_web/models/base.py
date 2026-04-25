@@ -11,7 +11,7 @@ def utcnow() -> datetime:
 
 
 class Base(DeclarativeBase):
-    """Base class for all models. Provides naming convention for constraints."""
+    """Declarative base class for all ORM models."""
 
     pass
 
