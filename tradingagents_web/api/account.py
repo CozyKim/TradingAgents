@@ -34,8 +34,7 @@ def _resolve_sqlite_path(db: OrmSession) -> Path:
         HTTPException: 409 if the bound engine is not SQLite, or if the
             database is in-memory / has no on-disk file.
     """
-    bind = db.get_bind()
-    url = bind.url
+    url = db.get_bind().engine.url
     if url.drivername.split("+")[0] != "sqlite":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
