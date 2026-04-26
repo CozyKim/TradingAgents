@@ -57,43 +57,60 @@ def save_notification_config(
 ) -> None:
     """Apply a partial update to the notification config and commit.
 
-    Unknown keys raise KeyError. None values for non-encrypted keys clear them
-    (delete the row); for encrypted keys, an empty string clears as well.
+    All keys in ``updates`` are validated against NOTIFICATION_DEFAULTS
+    before any mutation. Type validation of values is the caller's
+    responsibility (e.g., the settings API uses Pydantic).
+
+    Clearing semantics:
+      - Encrypted keys (currently: telegram_bot_token): both ``None`` and
+        ``""`` delete the row.
+      - Non-encrypted keys: only ``None`` deletes the row. Empty strings
+        and other falsy non-None values are stored verbatim.
+
+    On any exception the session is rolled back before re-raising, so a
+    partial multi-key update never leaves inconsistent state.
 
     Args:
         db: SQLAlchemy session.
         updates: Partial mapping of NOTIFICATION_DEFAULTS keys to new values.
 
     Raises:
-        KeyError: If a key in ``updates`` is not present in NOTIFICATION_DEFAULTS.
+        KeyError: If any key in ``updates`` is not in NOTIFICATION_DEFAULTS.
     """
-    for key, value in updates.items():
+    # Phase 1: validate all keys before any mutation
+    for key in updates:
         if key not in NOTIFICATION_DEFAULTS:
             raise KeyError(f"Unknown notification setting: {key!r}")
 
-        row = db.get(Setting, key)
-        if key in ENCRYPTED_KEYS:
-            if value in (None, ""):
-                if row is not None:
-                    db.delete(row)
-            else:
-                cipher = encrypt_secret(str(value))
-                if row is None:
-                    row = Setting(key=key, encrypted_value=cipher)
-                    db.add(row)
+    # Phase 2: apply mutations atomically
+    try:
+        for key, value in updates.items():
+            row = db.get(Setting, key)
+            if key in ENCRYPTED_KEYS:
+                if value in (None, ""):
+                    if row is not None:
+                        db.delete(row)
                 else:
-                    row.encrypted_value = cipher
-                    row.value = None
-        else:
-            if value is None:
-                if row is not None:
-                    db.delete(row)
+                    cipher = encrypt_secret(str(value))
+                    if row is None:
+                        row = Setting(key=key, encrypted_value=cipher)
+                        db.add(row)
+                    else:
+                        row.encrypted_value = cipher
+                        row.value = None
             else:
-                serialized = json.dumps(value)
-                if row is None:
-                    row = Setting(key=key, value=serialized)
-                    db.add(row)
+                if value is None:
+                    if row is not None:
+                        db.delete(row)
                 else:
-                    row.value = serialized
-                    row.encrypted_value = None
-    db.commit()
+                    serialized = json.dumps(value)
+                    if row is None:
+                        row = Setting(key=key, value=serialized)
+                        db.add(row)
+                    else:
+                        row.value = serialized
+                        row.encrypted_value = None
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise

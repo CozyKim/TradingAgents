@@ -112,3 +112,58 @@ def test_clear_token_via_empty_string(app_with_test_db):
         assert db.get(Setting, "telegram_bot_token") is None
     finally:
         db.close()
+
+
+def test_unknown_key_in_second_position_does_not_partially_apply(app_with_test_db):
+    """Validate-before-mutate guarantees no leak when a later key is bad."""
+    _, TestSessionLocal = app_with_test_db
+    db = TestSessionLocal()
+    try:
+        with pytest.raises(KeyError):
+            settings_store.save_notification_config(
+                db,
+                updates={
+                    "alert_on_signal_change": False,  # valid (would mutate)
+                    "nonsense_key": True,             # invalid (must abort)
+                },
+            )
+        # The valid mutation must NOT have leaked through.
+        cfg = settings_store.load_notification_config(db)
+        assert cfg["alert_on_signal_change"] is True  # default preserved
+    finally:
+        db.close()
+
+
+def test_clear_token_via_none(app_with_test_db):
+    """None and empty string both clear an encrypted key."""
+    _, TestSessionLocal = app_with_test_db
+    db = TestSessionLocal()
+    try:
+        settings_store.save_notification_config(
+            db, updates={"telegram_bot_token": "first-token"}
+        )
+        settings_store.save_notification_config(
+            db, updates={"telegram_bot_token": None}
+        )
+        cfg = settings_store.load_notification_config(db)
+        assert cfg["telegram_bot_token"] is None
+        assert cfg["telegram_bot_token_set"] is False
+        assert db.get(Setting, "telegram_bot_token") is None
+    finally:
+        db.close()
+
+
+def test_empty_string_preserved_for_non_encrypted_key(app_with_test_db):
+    """Plain keys keep "" verbatim — empty string is a valid value, not a clear."""
+    _, TestSessionLocal = app_with_test_db
+    db = TestSessionLocal()
+    try:
+        settings_store.save_notification_config(
+            db, updates={"telegram_chat_id": ""}
+        )
+        cfg = settings_store.load_notification_config(db)
+        assert cfg["telegram_chat_id"] == ""
+        # The row must still exist (was not deleted).
+        assert db.get(Setting, "telegram_chat_id") is not None
+    finally:
+        db.close()
