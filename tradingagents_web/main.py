@@ -87,10 +87,10 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(auth_api.router)
     app.include_router(alerts_api.router)
-    app.include_router(runs_api.router)
     app.include_router(holdings_api.router)
-    app.include_router(schedules_api.router)
     app.include_router(prices_api.router)
+    app.include_router(runs_api.router)
+    app.include_router(schedules_api.router)
     app.include_router(settings_notifications_api.router)
     return app
 
