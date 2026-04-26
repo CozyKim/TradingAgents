@@ -23,7 +23,7 @@ async def send_message(
     bot_token: str,
     chat_id: str,
     text: str,
-    parse_mode: str | None = "Markdown",
+    parse_mode: str | None = "MarkdownV2",
 ) -> bool:
     """POST sendMessage. Returns True on Telegram ``ok=true``, False otherwise.
 
@@ -34,8 +34,9 @@ async def send_message(
     Args:
         bot_token: Telegram Bot API token (e.g. ``"123456:ABC-DEF"``).
         chat_id: Target chat or channel ID as a string.
-        text: Message body to send.
-        parse_mode: Telegram parse mode. Defaults to ``"Markdown"``.
+        text: Message body to send. Caller is responsible for escaping
+            MarkdownV2 special characters when ``parse_mode="MarkdownV2"``.
+        parse_mode: Telegram parse mode. Defaults to ``"MarkdownV2"``.
             Pass ``None`` to send plain text.
 
     Returns:

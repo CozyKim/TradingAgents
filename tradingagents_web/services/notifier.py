@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
@@ -33,56 +34,76 @@ async def _send_telegram(*, bot_token: str, chat_id: str, text: str) -> bool:
 
 
 # Telegram caps a single message at 4096 chars. Reserve headroom for the
-# header + code-fence wrapping so the formatted message stays under the cap.
+# header + escape backslashes so the formatted message stays under the cap.
 _FINAL_DECISION_MAX_CHARS = 3500
 
+# MarkdownV2 reserved characters that must be backslash-escaped when they
+# appear in dynamic text. See: https://core.telegram.org/bots/api#markdownv2-style
+_MD2_SPECIAL = re.compile(r"([_*\[\]()~`>#+\-=|{}.!\\])")
 
-def _final_decision_block(text: str | None) -> str:
-    """Render a final_trade_decision body as a fenced code block, or empty."""
+
+def _md2(text: object) -> str:
+    """Escape a value for safe interpolation into a MarkdownV2 message body."""
+    return _MD2_SPECIAL.sub(r"\\\1", str(text))
+
+
+def _final_decision_body(text: str | None) -> str:
+    """Render the trader's final_trade_decision as escaped prose, or empty."""
     if not text:
         return ""
     body = str(text).strip()
     if not body:
         return ""
-    if len(body) > _FINAL_DECISION_MAX_CHARS:
-        body = body[:_FINAL_DECISION_MAX_CHARS].rstrip() + "\n…(truncated)"
-    # Code fence avoids Markdown collisions (asterisks, underscores, backticks)
-    # in the trader's free-form text.
-    return f"\n```\n{body}\n```"
+    truncated = len(body) > _FINAL_DECISION_MAX_CHARS
+    if truncated:
+        body = body[:_FINAL_DECISION_MAX_CHARS].rstrip()
+    escaped = _md2(body)
+    if truncated:
+        escaped += "\n" + _md2("…(truncated)")
+    return f"\n\n{escaped}"
 
 
 def _format_message(outcome: DiffOutcome, *, ticker: str | None) -> str:
-    """Return a Markdown message body for one DiffOutcome."""
+    """Return a MarkdownV2 message body for one DiffOutcome.
+
+    Static markup (``*bold*``, `` `code` ``) in the headers is intentionally
+    left unescaped so it renders. All dynamic values are escaped via ``_md2``.
+    """
     p = outcome.payload
+    tk = _md2(ticker or "?")
     if outcome.type == "signal_change":
         conf = p.get("confidence")
-        conf_text = f"{conf:.2f}" if conf is not None else "—"
+        conf_text = _md2(f"{conf:.2f}") if conf is not None else _md2("—")
         return (
-            f"*Signal change* `{ticker}`\n"
-            f"{p['prev']} → *{p['curr']}* (conf {conf_text})"
-            f"{_final_decision_block(p.get('final_decision_text'))}"
+            f"*Signal change* `{tk}`\n"
+            f"{_md2(p['prev'])} → *{_md2(p['curr'])}* "
+            f"\\(conf {conf_text}\\)"
+            f"{_final_decision_body(p.get('final_decision_text'))}"
         )
     if outcome.type == "confidence_change":
+        prev = _md2(f"{p['prev']:.2f}")
+        curr = _md2(f"{p['curr']:.2f}")
+        delta = _md2(f"{p['delta']:+.2f}")
         return (
-            f"*Confidence shift* `{ticker}`\n"
-            f"{p['prev']:.2f} → {p['curr']:.2f} (Δ {p['delta']:+.2f})"
+            f"*Confidence shift* `{tk}`\n"
+            f"{prev} → {curr} \\(Δ {delta}\\)"
         )
     if outcome.type == "run_completed":
         conf = p.get("confidence")
-        conf_text = f"{conf:.2f}" if conf is not None else "—"
+        conf_text = _md2(f"{conf:.2f}") if conf is not None else _md2("—")
+        decision = _md2(p.get("decision") or "—")
         return (
-            f"*Analysis complete* `{ticker}`\n"
-            f"{p.get('decision')} (conf {conf_text})"
-            f"{_final_decision_block(p.get('final_decision_text'))}"
+            f"*Analysis complete* `{tk}`\n"
+            f"{decision} \\(conf {conf_text}\\)"
+            f"{_final_decision_body(p.get('final_decision_text'))}"
         )
     if outcome.type == "run_failed":
-        return f"*Analysis failed* `{ticker}`\n{(p.get('error') or '')[:200]}"
+        err = _md2((p.get("error") or "")[:200])
+        return f"*Analysis failed* `{tk}`\n{err}"
     if outcome.type == "schedule_failed":
-        return (
-            f"*Schedule failed* `{ticker or '?'}`\n"
-            f"{(p.get('error') or '')[:200]}"
-        )
-    return f"Alert: {outcome.type}"
+        err = _md2((p.get("error") or "")[:200])
+        return f"*Schedule failed* `{tk}`\n{err}"
+    return f"Alert: {_md2(outcome.type)}"
 
 
 async def dispatch_for_analysis(
