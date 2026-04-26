@@ -88,15 +88,8 @@ export function ScheduleForm() {
         </select>
       </div>
       <div className="flex flex-col gap-2">
-        <Label htmlFor="cron">Cron ({tz})</Label>
-        <Input
-          id="cron"
-          required
-          value={cron}
-          onChange={(e) => setCron(e.target.value)}
-          className="font-mono"
-        />
-        <CronHelper value={cron} timezone={tz} onChange={setCron} />
+        <Label>스케줄</Label>
+        <CronBuilder value={cron} timezone={tz} onChange={setCron} />
       </div>
       <div>
         <Label>Analysts</Label>
