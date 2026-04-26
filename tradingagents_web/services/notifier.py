@@ -71,11 +71,16 @@ def _md2_url(url: str) -> str:
     return url.replace("\\", "\\\\").replace(")", "\\)")
 
 
-def _analysis_link(base_url: str | None, analysis_id: int | None) -> str:
-    """Build a MarkdownV2 inline-link line, or empty if either input missing."""
-    if not base_url or analysis_id is None:
+def _analysis_link(base_url: str | None, run_uuid: str | None) -> str:
+    """Build a MarkdownV2 inline-link line, or empty if either input missing.
+
+    The frontend ``/history/[id]`` route forwards its slug to
+    ``GET /api/runs/{run_id}``, which lookups by ``Analysis.run_id`` (the UUID
+    string), not the integer PK — so the link must use the ``run_id`` value.
+    """
+    if not base_url or not run_uuid:
         return ""
-    href = f"{base_url.rstrip('/')}/history/{analysis_id}"
+    href = f"{base_url.rstrip('/')}/history/{run_uuid}"
     return f"\n[{_md2('View analysis →')}]({_md2_url(href)})"
 
 
@@ -83,7 +88,7 @@ def _format_message(
     outcome: DiffOutcome,
     *,
     ticker: str | None,
-    analysis_id: int | None = None,
+    analysis_run_id: str | None = None,
     web_base_url: str | None = None,
 ) -> str:
     """Return a MarkdownV2 message body for one DiffOutcome.
@@ -95,7 +100,7 @@ def _format_message(
     """
     p = outcome.payload
     tk = _md2(ticker or "?")
-    link = _analysis_link(web_base_url, analysis_id)
+    link = _analysis_link(web_base_url, analysis_run_id)
     if outcome.type == "signal_change":
         conf = p.get("confidence")
         conf_text = _md2(f"{conf:.2f}") if conf is not None else _md2("—")
@@ -177,6 +182,7 @@ async def dispatch_for_analysis(
                 outcomes=outcomes,
                 ticker=current.ticker,
                 analysis_id=current.id,
+                analysis_run_id=current.run_id,
                 schedule_id=current.schedule_id,
                 cfg=cfg,
             )
@@ -216,6 +222,7 @@ async def dispatch_schedule_failure(
                 outcomes=[outcome],
                 ticker=ticker,
                 analysis_id=None,
+                analysis_run_id=None,
                 schedule_id=schedule_id,
                 cfg=cfg,
             )
@@ -231,6 +238,7 @@ async def _persist_and_push(
     outcomes: list[DiffOutcome],
     ticker: str | None,
     analysis_id: int | None,
+    analysis_run_id: str | None,
     schedule_id: int | None,
     cfg: dict[str, Any],
 ) -> None:
@@ -241,6 +249,8 @@ async def _persist_and_push(
         outcomes: List of DiffOutcome instances to persist.
         ticker: Ticker symbol for the Alert rows.
         analysis_id: FK to analyses table, or None for schedule-only alerts.
+        analysis_run_id: UUID string used to build the Telegram link target,
+            or None when no analysis is associated.
         schedule_id: FK to schedules table, or None for manual runs.
         cfg: Notification config from ``settings_store.load_notification_config``.
     """
@@ -274,7 +284,7 @@ async def _persist_and_push(
             text=_format_message(
                 o,
                 ticker=ticker,
-                analysis_id=analysis_id,
+                analysis_run_id=analysis_run_id,
                 web_base_url=web_base_url,
             ),
         )

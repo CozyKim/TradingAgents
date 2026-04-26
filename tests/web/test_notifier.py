@@ -163,7 +163,7 @@ async def test_telegram_message_includes_analysis_link_when_base_url_set(
 
     sender.assert_awaited()
     sent_texts = [c.kwargs["text"] for c in sender.await_args_list]
-    expected_url = f"https://trading.example.com/history/{curr.id}"
+    expected_url = f"https://trading.example.com/history/{curr.run_id}"
     assert any(expected_url in t for t in sent_texts), sent_texts
 
 
