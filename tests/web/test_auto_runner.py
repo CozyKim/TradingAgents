@@ -13,6 +13,7 @@ def _reset_bus():
     reset_event_bus()
 
 
+@pytest.mark.asyncio
 async def test_trigger_run_creates_analysis_row_and_updates_schedule(
     monkeypatch, app_with_test_db
 ):

@@ -8,15 +8,6 @@ from tradingagents_web.api import runs as runs_api
 from tradingagents_web.services import notifier
 
 
-def _make_request_payload():
-    return {
-        "ticker": "AAPL",
-        "analysis_date": date(2026, 4, 26).isoformat(),
-        "analysts": ["market"],
-        "debate_rounds": 1,
-    }
-
-
 @pytest.mark.asyncio
 async def test_completion_invokes_notifier(monkeypatch, app_with_test_db):
     """When a run completes, notifier.dispatch_for_analysis is awaited."""
