@@ -6,7 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useHoldings } from "@/hooks/use-holdings";
 import { useRunList } from "@/hooks/use-runs";
 import { usePriceHistory } from "@/hooks/use-price-history";
-import { PriceChart, SignalMarker } from "@/components/portfolio/price-chart";
+import { useChartSettings } from "@/hooks/use-chart-settings";
+import { ChartStack } from "@/components/portfolio/chart-stack";
+import { SignalMarker } from "@/components/portfolio/price-chart";
 import { SignalBadge } from "@/components/shared/signal-badge";
 
 export default function PortfolioDetail() {
@@ -15,6 +17,7 @@ export default function PortfolioDetail() {
   const { data: holdings } = useHoldings();
   const { data: history } = useRunList({ ticker, page_size: 50 });
   const { data: price, isLoading: priceLoading } = usePriceHistory(ticker, 90);
+  const { settings, setSettings, reset } = useChartSettings();
 
   const holding = holdings?.items.find((h) => h.ticker === ticker);
 
@@ -49,13 +52,13 @@ export default function PortfolioDetail() {
         <Card>
           <CardContent className="py-4 grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <div className="text-[10px] uppercase tracking-widest text-text-3">
+              <div className="text-2xs uppercase tracking-widest text-text-3">
                 Quantity
               </div>
               <div className="font-mono tabular-nums">{holding.qty}</div>
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-widest text-text-3">
+              <div className="text-2xs uppercase tracking-widest text-text-3">
                 Avg cost
               </div>
               <div className="font-mono tabular-nums">
@@ -63,7 +66,7 @@ export default function PortfolioDetail() {
               </div>
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-widest text-text-3">
+              <div className="text-2xs uppercase tracking-widest text-text-3">
                 Last
               </div>
               <div className="font-mono tabular-nums">
@@ -71,7 +74,7 @@ export default function PortfolioDetail() {
               </div>
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-widest text-text-3">
+              <div className="text-2xs uppercase tracking-widest text-text-3">
                 P&amp;L
               </div>
               <div
@@ -96,9 +99,20 @@ export default function PortfolioDetail() {
         </CardHeader>
         <CardContent>
           {priceLoading ? (
-            <p className="text-sm text-text-3">Loading prices…</p>
+            <div
+              className="h-64 animate-pulse rounded-md border border-border-1 bg-bg-2/40"
+              role="status"
+              aria-label="Loading prices"
+            />
           ) : (
-            <PriceChart points={price?.points ?? []} signals={signals} />
+            <ChartStack
+              points={price?.points ?? []}
+              signals={signals}
+              avgCost={holding?.avg_cost}
+              settings={settings}
+              onChange={setSettings}
+              onReset={reset}
+            />
           )}
         </CardContent>
       </Card>
