@@ -195,3 +195,98 @@ def test_mask_token_is_unit_testable():
     out = _mask_token(long)
     assert out.startswith("abcd") and out.endswith("wxyz")
     assert "…" in out
+
+
+def _make_full_schema_db(path):
+    """Create a SQLite file with all 7 required tables (empty)."""
+    import sqlite3 as _sqlite3
+    conn = _sqlite3.connect(path)
+    conn.executescript(
+        '''
+        CREATE TABLE users (id INTEGER PRIMARY KEY, password_hash TEXT, created_at TEXT);
+        CREATE TABLE sessions (id TEXT PRIMARY KEY, user_id INTEGER, expires_at TEXT, created_at TEXT);
+        CREATE TABLE analyses (id INTEGER PRIMARY KEY);
+        CREATE TABLE holdings (id INTEGER PRIMARY KEY);
+        CREATE TABLE schedules (id INTEGER PRIMARY KEY);
+        CREATE TABLE alerts (id INTEGER PRIMARY KEY);
+        CREATE TABLE settings (key TEXT PRIMARY KEY);
+        '''
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_restore_replaces_database_with_uploaded_file(app_with_test_db, client, tmp_path):
+    client, _ = _login(app_with_test_db, client)
+    new_db = tmp_path / "incoming.db"
+    _make_full_schema_db(new_db)
+
+    with new_db.open("rb") as fh:
+        r = client.post(
+            "/api/settings/account/restore",
+            files={"file": ("backup.db", fh, "application/octet-stream")},
+            headers={"X-Requested-With": "fetch"},
+        )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is True
+    assert body["detail"]
+
+    # The caller's session no longer exists in the new (empty) sessions table.
+    me = client.get("/api/auth/me")
+    assert me.status_code == 401
+
+
+def test_restore_rejects_garbage_file(app_with_test_db, client):
+    client, _ = _login(app_with_test_db, client)
+    r = client.post(
+        "/api/settings/account/restore",
+        files={"file": ("bad.db", b"not a sqlite file", "application/octet-stream")},
+        headers={"X-Requested-With": "fetch"},
+    )
+    assert r.status_code == 400
+
+
+def test_restore_rejects_db_missing_required_tables(app_with_test_db, client, tmp_path):
+    client, _ = _login(app_with_test_db, client)
+    incomplete = tmp_path / "partial.db"
+    import sqlite3 as _sqlite3
+    conn = _sqlite3.connect(incomplete)
+    conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, password_hash TEXT)")
+    conn.commit()
+    conn.close()
+
+    with incomplete.open("rb") as fh:
+        r = client.post(
+            "/api/settings/account/restore",
+            files={"file": ("partial.db", fh, "application/octet-stream")},
+            headers={"X-Requested-With": "fetch"},
+        )
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    # Should name at least one missing required table
+    assert any(t in detail for t in ("sessions", "analyses", "holdings", "schedules", "alerts", "settings"))
+
+
+def test_restore_requires_csrf_header(app_with_test_db, client, tmp_path):
+    client, _ = _login(app_with_test_db, client)
+    new_db = tmp_path / "incoming.db"
+    _make_full_schema_db(new_db)
+    with new_db.open("rb") as fh:
+        r = client.post(
+            "/api/settings/account/restore",
+            files={"file": ("backup.db", fh, "application/octet-stream")},
+        )
+    assert r.status_code == 403
+
+
+def test_restore_requires_auth(client, tmp_path):
+    new_db = tmp_path / "incoming.db"
+    _make_full_schema_db(new_db)
+    with new_db.open("rb") as fh:
+        r = client.post(
+            "/api/settings/account/restore",
+            files={"file": ("backup.db", fh, "application/octet-stream")},
+            headers={"X-Requested-With": "fetch"},
+        )
+    assert r.status_code == 401

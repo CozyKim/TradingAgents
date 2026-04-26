@@ -1,12 +1,13 @@
 """Account/settings API: backup, restore, password, sessions."""
 from __future__ import annotations
 
+import shutil
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session as OrmSession
 
@@ -23,13 +24,26 @@ from tradingagents_web.models import User
 from tradingagents_web.schemas.account import (
     PasswordChangeRequest,
     PasswordChangeResponse,
+    RestoreResponse,
     SessionItem,
     SessionListResponse,
 )
+from tradingagents_web.services import db_admin
+from tradingagents_web.services import scheduler as scheduler_module
 
 router = APIRouter(prefix="/api/settings/account", tags=["account"])
 
 _settings = Settings()
+
+_REQUIRED_TABLES: tuple[str, ...] = (
+    "users",
+    "sessions",
+    "analyses",
+    "holdings",
+    "schedules",
+    "alerts",
+    "settings",
+)
 
 
 def _resolve_sqlite_path(db: OrmSession) -> Path:
@@ -189,3 +203,120 @@ def revoke_other_sessions(
     ).delete(synchronize_session=False)
     db.commit()
     return PasswordChangeResponse(ok=True)
+
+
+def _stop_scheduler() -> bool:
+    """Shut down the in-process scheduler if one is running.
+
+    Returns:
+        ``True`` if a scheduler was actually stopped (i.e. one was
+        registered before this call). ``False`` when no scheduler had
+        been initialized — tests run in this mode because the FastAPI
+        lifespan is not entered, so there is nothing to restart later.
+    """
+    try:
+        svc = scheduler_module.get_scheduler()
+    except RuntimeError:
+        return False
+    svc.shutdown()
+    scheduler_module.set_scheduler(None)
+    return True
+
+
+def _start_scheduler() -> None:
+    """Re-create + bootstrap the scheduler from the (possibly-replaced) DB.
+
+    Imported lazily to avoid pulling APScheduler into modules that don't
+    need it.
+    """
+    from tradingagents_web.config import Settings as _AppSettings
+    from tradingagents_web.db import SessionLocal as _SessionLocal
+    from tradingagents_web.services import auto_runner as _auto_runner
+    from tradingagents_web.services.scheduler import SchedulerService as _SchedulerService
+
+    settings = _AppSettings()
+    svc = _SchedulerService(
+        tz=settings.schedule_tz,
+        grace_seconds=settings.scheduler_grace_seconds,
+    )
+
+    async def _on_trigger(schedule_id: int) -> None:
+        # Discard ``trigger_run``'s ``str | None`` return so the callable
+        # matches ``TriggerCallback = Callable[[int], Awaitable[None]]``.
+        await _auto_runner.trigger_run(schedule_id)
+
+    svc.set_trigger_callback(_on_trigger)
+    scheduler_module.set_scheduler(svc)
+    svc.start()
+    db = _SessionLocal()
+    try:
+        svc.bootstrap(db)
+    finally:
+        db.close()
+
+
+@router.post("/restore", response_model=RestoreResponse)
+async def restore_database(
+    file: Annotated[UploadFile, File(...)],
+    db: Annotated[OrmSession, Depends(get_db)],
+    _user: Annotated[User, Depends(get_current_user)],
+    _csrf: Annotated[None, Depends(require_xhr)] = None,
+) -> RestoreResponse:
+    """Replace the live SQLite file with an uploaded backup.
+
+    Steps:
+      1. Resolve the bound engine's file path.
+      2. Stream the upload into a sibling staging file.
+      3. Run ``db_admin.run_restore`` which validates the staging file,
+         stops the scheduler, disposes the bound engine, swaps the file
+         in place, and finally restarts the scheduler.
+
+    Out of scope: undoing a partial restore. If swap fails after the
+    engine is disposed but before the file is replaced, the live DB is
+    intact (only metadata was touched). The next request reopens it.
+
+    Raises:
+        HTTPException: 400 if the upload fails validation; 409 if the
+            deployment is not on-disk SQLite.
+    """
+    target = _resolve_sqlite_path(db)
+    staging = target.with_name("restore.staging.db")
+    try:
+        with staging.open("wb") as out:
+            shutil.copyfileobj(file.file, out)
+    finally:
+        await file.close()
+
+    bound_engine = db.get_bind().engine
+
+    def _dispose() -> None:
+        bound_engine.dispose()
+
+    # Track whether we actually stopped a scheduler so we only restart
+    # one if one existed. Tests don't enter the lifespan and therefore
+    # never have a scheduler — restarting one would leak APScheduler
+    # state across test cases (stale event-loop reference).
+    was_running: dict[str, bool] = {"v": False}
+
+    def _stop() -> None:
+        was_running["v"] = _stop_scheduler()
+
+    def _start() -> None:
+        if was_running["v"]:
+            _start_scheduler()
+
+    try:
+        db_admin.run_restore(
+            target=target,
+            staging=staging,
+            required_tables=_REQUIRED_TABLES,
+            stop_workers=_stop,
+            dispose_engine=_dispose,
+            start_workers=_start,
+        )
+    except db_admin.DatabaseValidationError as exc:
+        if staging.exists():
+            staging.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return RestoreResponse(ok=True, detail="Database restored. All sessions revoked.")
