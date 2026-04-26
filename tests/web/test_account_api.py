@@ -132,3 +132,66 @@ def test_password_change_requires_csrf_header(app_with_test_db, client):
         json={"current_password": "testpass", "new_password": "newpass1234"},
     )
     assert r.status_code == 403
+
+
+def test_sessions_list_marks_current(app_with_test_db, client):
+    client, user_id = _login(app_with_test_db, client)
+    _make_extra_session(app_with_test_db, user_id)
+    _make_extra_session(app_with_test_db, user_id)
+
+    r = client.get("/api/settings/account/sessions")
+    assert r.status_code == 200
+    body = r.json()
+    items = body["sessions"]
+    assert len(items) == 3
+    current = [s for s in items if s["is_current"]]
+    assert len(current) == 1, "exactly one session should be marked current"
+    for s in items:
+        assert "id_masked" in s
+        # masked token is short and contains an ellipsis (or is "***" for short ids)
+        assert len(s["id_masked"]) <= 12
+
+
+def test_sessions_list_requires_auth(client):
+    r = client.get("/api/settings/account/sessions")
+    assert r.status_code == 401
+
+
+def test_sessions_revoke_others_keeps_current(app_with_test_db, client):
+    client, user_id = _login(app_with_test_db, client)
+    other = _make_extra_session(app_with_test_db, user_id)
+
+    r = client.post(
+        "/api/settings/account/sessions/revoke-others",
+        headers={"X-Requested-With": "fetch"},
+    )
+    assert r.status_code == 200
+    assert r.json() == {"ok": True}
+
+    # Caller's session still authenticates.
+    me = client.get("/api/auth/me")
+    assert me.status_code == 200
+
+    # The other session is gone. Same TestClient cookie-jar workaround as the
+    # password tests: clear the jar and pin to the target token before asserting.
+    client.cookies.clear()
+    client.cookies.set(_settings.session_cookie_name, other)
+    me_other = client.get("/api/auth/me")
+    assert me_other.status_code == 401
+
+
+def test_sessions_revoke_others_requires_csrf_header(app_with_test_db, client):
+    client, _ = _login(app_with_test_db, client)
+    r = client.post("/api/settings/account/sessions/revoke-others")
+    assert r.status_code == 403
+
+
+def test_mask_token_is_unit_testable():
+    # Verify the helper directly (it's small but worth covering both branches).
+    from tradingagents_web.api.account import _mask_token
+    assert _mask_token("abcd") == "***"
+    assert _mask_token("abcdefgh") == "***"  # exactly 8 → mask
+    long = "abcd1234ZZZZwxyz"
+    out = _mask_token(long)
+    assert out.startswith("abcd") and out.endswith("wxyz")
+    assert "…" in out

@@ -23,6 +23,8 @@ from tradingagents_web.models import User
 from tradingagents_web.schemas.account import (
     PasswordChangeRequest,
     PasswordChangeResponse,
+    SessionItem,
+    SessionListResponse,
 )
 
 router = APIRouter(prefix="/api/settings/account", tags=["account"])
@@ -60,6 +62,13 @@ def _resolve_sqlite_path(db: OrmSession) -> Path:
             detail="No on-disk database file to back up.",
         )
     return Path(target).resolve()
+
+
+def _mask_token(token: str) -> str:
+    """Return a short fingerprint that's safe to render in the UI."""
+    if len(token) <= 8:
+        return "***"
+    return f"{token[:4]}…{token[-4:]}"
 
 
 @router.get("/backup")
@@ -132,5 +141,51 @@ def change_password(
         if current_token:
             q = q.filter(SessionModel.id != current_token)
         q.delete(synchronize_session=False)
+    db.commit()
+    return PasswordChangeResponse(ok=True)
+
+
+@router.get("/sessions", response_model=SessionListResponse)
+def list_sessions(
+    request: Request,
+    db: Annotated[OrmSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> SessionListResponse:
+    """List every active session for the current user, newest expiry first.
+
+    Tokens are never returned in full. The current cookie's session is
+    marked with ``is_current=True`` so the UI can disable a self-revoke.
+    """
+    current_token = request.cookies.get(_settings.session_cookie_name) or ""
+    rows = (
+        db.query(SessionModel)
+        .filter_by(user_id=user.id)
+        .order_by(SessionModel.expires_at.desc())
+        .all()
+    )
+    items = [
+        SessionItem(
+            id_masked=_mask_token(s.id),
+            expires_at=s.expires_at,
+            is_current=(s.id == current_token),
+        )
+        for s in rows
+    ]
+    return SessionListResponse(sessions=items)
+
+
+@router.post("/sessions/revoke-others", response_model=PasswordChangeResponse)
+def revoke_other_sessions(
+    request: Request,
+    db: Annotated[OrmSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+    _csrf: Annotated[None, Depends(require_xhr)] = None,
+) -> PasswordChangeResponse:
+    """Delete every session row for this user except the caller's cookie."""
+    current_token = request.cookies.get(_settings.session_cookie_name) or ""
+    db.query(SessionModel).filter(
+        SessionModel.user_id == user.id,
+        SessionModel.id != current_token,
+    ).delete(synchronize_session=False)
     db.commit()
     return PasswordChangeResponse(ok=True)
