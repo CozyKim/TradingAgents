@@ -51,6 +51,8 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     from tradingagents_web.api import auth as auth_api
     app.include_router(auth_api.router)
+    from tradingagents_web.api import runs as runs_api
+    app.include_router(runs_api.router)
     return app
 
 
