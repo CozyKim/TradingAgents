@@ -22,7 +22,11 @@ export default function RunLivePage() {
     detail.data?.status === "completed" ||
     detail.data?.status === "failed" ||
     detail.data?.status === "cancelled";
-  const stream = useRunStream(terminalStatus ? undefined : runId);
+  // Always open SSE keyed by runId. The backend immediately replays buffered
+  // history (and emits `close` for already-terminal runs), so this is safe
+  // regardless of cache state and avoids races where a stale cached
+  // terminal status would prevent the stream from ever starting.
+  const stream = useRunStream(runId);
   const cancel = useCancelRun();
 
   const isRunning = detail.data?.status === "running" && !stream.done;

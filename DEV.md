@@ -32,6 +32,11 @@ cd web && npm run dev
 
 Open http://localhost:3000 — you'll be redirected to /login.
 
+SSE for run progress is proxied same-origin through a Next.js Route Handler
+(`web/app/api/runs/[id]/stream/route.ts`), so only port 3000 needs to be
+reachable from the client (LAN, port-forwarded WAN, or reverse proxy). The
+backend can stay on `localhost:8000`.
+
 ## Run via docker-compose
 
 ```bash
