@@ -94,3 +94,47 @@ cd web && npm run build           # frontend build
 - `WEB_FAKE_RUNNER=true`로 LLM 호출 없이 전체 흐름을 검증할 수 있다.
 - 가격 데이터는 yfinance를 5분 TTL 인메모리 캐시로 호출한다. 오프라인이면 차트가 비어 보일 수 있다.
 - 신호 변경 알림(in-app + Telegram)은 M4에서 추가된다 — M3는 분석 자동 실행까지만.
+
+## M4 — Alerts + Telegram
+
+새 의존성: `respx>=0.21` (dev 그룹, Telegram HTTP mocking용). 런타임 의존성은 기존 `httpx`/`cryptography`/`sqlalchemy`로 충분.
+
+### 데이터
+
+- `alerts` 테이블: 분석 완료/실패, 시그널 변경, 신뢰도 변동, 스케줄 실패 이벤트가 영구 기록된다. 미읽음 상태(`read=False`)로 시작하며 `/alerts`에서 필터·읽음 처리.
+- `settings` 테이블: 한 행 = 한 키. `telegram_bot_token`만 `cryptography.Fernet`으로 암호화되어 `encrypted_value`(BLOB)에 저장된다. 다른 키는 `value`(JSON 텍스트). 키 화이트리스트는 `tradingagents_web/services/settings_store.py:NOTIFICATION_DEFAULTS`.
+
+### Telegram 봇 설정 (선택)
+
+1. BotFather(`@BotFather`)로 봇 생성 → API 토큰 획득.
+2. 봇과 1:1 대화 시작 → `https://api.telegram.org/bot<TOKEN>/getUpdates` 응답에서 `chat_id` 확인.
+3. 웹 UI `/settings/notifications`에서 토큰 + chat ID 입력 → "Send test message"로 검증.
+   - 토큰은 항상 `password` 입력으로 마스킹되며 응답에는 `telegram_bot_token_set: bool` 플래그만 노출된다.
+   - 빈 토큰을 저장하면 행이 삭제되어 알림이 in-app만으로 폴백된다.
+
+### 트리거 동작 (기본값)
+
+| 트리거 | 기본 ON/OFF | 설명 |
+|---|---|---|
+| `signal_change` | ON | 같은 ticker의 직전 `completed` 분석과 결정이 다르면(BUY⇄HOLD⇄SELL) 발화 |
+| `confidence_change` | ON (`threshold=0.10`) | `\|Δconfidence\| >= threshold`일 때 발화. threshold 비우면 비활성 |
+| `run_failed` | ON | 분석 status가 failed로 끝나면 항상 발화 (in-app + Telegram) |
+| `schedule_failed` | ON | APScheduler 트리거가 예외로 끝나면 발화 |
+| `run_completed` | OFF | 모든 완료 알림. 시끄러우니 기본 OFF |
+
+설정은 `/settings/notifications`에서 토글하거나 `PUT /api/settings/notifications`로 부분 업데이트한다.
+
+### 사용 흐름
+
+1. (옵션) `/settings/notifications`에서 Telegram 토큰·chat ID 저장 후 "Send test message"로 검증.
+2. `/run`으로 분석 실행, 또는 `/schedules`/holding monitor로 자동 분석 누적.
+3. 같은 ticker의 결정이 바뀌거나 신뢰도가 임계값 이상 움직이면 `/alerts`에 행이 쌓이고 데스크톱 헤더 벨 아이콘에 미읽음 카운트가 갱신된다(폴링 30s).
+4. `/alerts`에서 type/unread 필터링, 개별 "Mark read" 또는 "Mark all read".
+5. Telegram이 설정되어 있으면 같은 이벤트가 동시에 chat으로 push된다.
+
+### 주의
+
+- 알림 디스패처(`tradingagents_web/services/notifier.py`)는 모든 내부 예외를 삼키도록 설계되어 있다 — 알림 실패가 분석 파이프라인을 절대 중단시키지 않는다.
+- Telegram 클라이언트(`tradingagents_web/services/telegram.py`)는 HTTP 에러뿐만 아니라 비-JSON 응답(`json.JSONDecodeError`)도 잡아서 False/`{ok: False}`로 변환한다.
+- `ENCRYPTION_KEY` 환경변수가 비어 있으면 `settings_store`가 부팅 시 토큰 암복호화에서 RuntimeError를 던진다 — `.env.example`의 키를 그대로 두지 말 것.
+- 미읽음 카운트 폴링 주기를 줄이고 싶으면 `web/hooks/use-unread-count.ts`의 `refetchInterval`을 조정한다.
