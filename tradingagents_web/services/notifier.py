@@ -204,4 +204,7 @@ async def _persist_and_push(
         )
         for o in outcomes
     ]
-    await asyncio.gather(*sends, return_exceptions=True)
+    results = await asyncio.gather(*sends, return_exceptions=True)
+    for r in results:
+        if isinstance(r, Exception):
+            logger.warning("telegram fanout exception swallowed: %s", r)
