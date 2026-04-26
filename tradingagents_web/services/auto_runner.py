@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session as OrmSession
 
-from tradingagents_web.db import SessionLocal
 from tradingagents_web.models import Schedule
 
 logger = logging.getLogger(__name__)
@@ -23,20 +22,26 @@ logger = logging.getLogger(__name__)
 async def trigger_run(
     schedule_id: int,
     *,
-    session_factory: Callable[[], OrmSession] = SessionLocal,
+    session_factory: Callable[[], OrmSession] | None = None,
 ) -> str | None:
     """Fire-and-forget: load the schedule and start an analysis run.
 
     Args:
         schedule_id: Schedule row id.
-        session_factory: Zero-arg factory returning a SQLAlchemy session
-            (overridden by tests).
+        session_factory: Zero-arg factory returning a SQLAlchemy session.
+            When None (the default), the runs API's background session
+            factory is used so test overrides via
+            ``runs.set_background_session_factory`` apply transparently.
 
     Returns:
         New run_id if started, None if the schedule was not found or inactive.
     """
     from tradingagents.default_config import DEFAULT_CONFIG
+    from tradingagents_web.api import runs as runs_api
     from tradingagents_web.api.runs import start_analysis_run
+
+    if session_factory is None:
+        session_factory = runs_api._session_factory
 
     db = session_factory()
     try:
