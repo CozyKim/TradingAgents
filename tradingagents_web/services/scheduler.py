@@ -74,7 +74,8 @@ class SchedulerService:
         if not schedule.active:
             self.unregister(schedule.id)
             return
-        trigger = CronTrigger.from_crontab(schedule.cron_expr, timezone=self._tz)
+        tz = getattr(schedule, "timezone", None) or self._tz
+        trigger = CronTrigger.from_crontab(schedule.cron_expr, timezone=tz)
         self.scheduler.add_job(
             self._fire,
             trigger=trigger,

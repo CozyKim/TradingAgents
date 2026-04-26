@@ -9,7 +9,8 @@ from tradingagents_web.models import Holding, Schedule
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MONITOR_CRON = "30 16 * * 1-5"  # weekdays at 16:30 in WEB_SCHEDULE_TZ
+DEFAULT_MONITOR_CRON = "30 16 * * 1-5"  # weekdays at 16:30 ET (US market close)
+DEFAULT_MONITOR_TZ = "America/New_York"
 DEFAULT_PRESET = {
     "analysts": ["market", "social", "news", "fundamentals"],
     "debate_rounds": 1,
@@ -37,6 +38,7 @@ def sync_holding_monitor(db: OrmSession, holding: Holding) -> Schedule | None:
                 name=f"Auto monitor {holding.ticker}",
                 ticker=holding.ticker,
                 cron_expr=DEFAULT_MONITOR_CRON,
+                timezone=DEFAULT_MONITOR_TZ,
                 preset=dict(DEFAULT_PRESET),
                 active=True,
                 source="holding",

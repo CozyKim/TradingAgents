@@ -7,9 +7,16 @@ import {
   useUpdateSchedule,
 } from "@/hooks/use-schedules";
 import { Schedule } from "@/lib/schedules";
+import { formatKST, humanizeCron } from "@/lib/datetime";
 
-function fmt(d: string | null) {
-  return d ? new Date(d).toLocaleString() : "—";
+const TZ_LABEL: Record<string, string> = {
+  "Asia/Seoul": "KST",
+  "America/New_York": "ET",
+  UTC: "UTC",
+};
+
+function tzLabel(tz: string): string {
+  return TZ_LABEL[tz] ?? tz;
 }
 
 export function SchedulesTable({ rows }: { rows: Schedule[] }) {
@@ -24,7 +31,7 @@ export function SchedulesTable({ rows }: { rows: Schedule[] }) {
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-[10px] uppercase tracking-wider text-text-3 border-b border-border-1">
+          <tr className="text-2xs uppercase tracking-wider text-text-3 border-b border-border-1">
             <th className="text-left py-2">Name</th>
             <th>Ticker</th>
             <th>Cron</th>
@@ -40,10 +47,15 @@ export function SchedulesTable({ rows }: { rows: Schedule[] }) {
             <tr key={s.id} className="border-b border-border-1 hover:bg-bg-2">
               <td className="py-2">{s.name}</td>
               <td className="font-mono text-xs">{s.ticker}</td>
-              <td className="font-mono text-xs">{s.cron_expr}</td>
+              <td className="text-xs">
+                <div>{humanizeCron(s.cron_expr, { tzLabel: tzLabel(s.timezone) })}</div>
+                <div className="font-mono text-2xs text-text-3">
+                  {s.cron_expr}
+                </div>
+              </td>
               <td className="text-xs text-text-3">{s.source}</td>
-              <td className="text-xs">{fmt(s.next_run)}</td>
-              <td className="text-xs">{fmt(s.last_run)}</td>
+              <td className="text-xs">{formatKST(s.next_run)}</td>
+              <td className="text-xs">{formatKST(s.last_run)}</td>
               <td className="text-center">
                 <Switch
                   checked={s.active}

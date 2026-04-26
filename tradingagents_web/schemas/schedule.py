@@ -1,11 +1,22 @@
 """Pydantic schemas for the schedules API."""
 from datetime import datetime
 from typing import Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from croniter import croniter
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 VALID_ANALYSTS = {"market", "social", "news", "fundamentals"}
+DEFAULT_TZ = "Asia/Seoul"
+
+
+def _validate_tz(value: str) -> str:
+    value = value.strip()
+    try:
+        ZoneInfo(value)
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError(f"unknown IANA timezone: {value!r}") from exc
+    return value
 
 
 class SchedulePreset(BaseModel):
@@ -35,6 +46,7 @@ class ScheduleCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
     ticker: str = Field(..., min_length=1, max_length=16)
     cron_expr: str
+    timezone: str = Field(default=DEFAULT_TZ, max_length=64)
     preset: SchedulePreset
     active: bool = True
 
@@ -51,10 +63,16 @@ class ScheduleCreate(BaseModel):
     def _check_cron(cls, v: str) -> str:
         return _validate_cron(v)
 
+    @field_validator("timezone")
+    @classmethod
+    def _check_tz(cls, v: str) -> str:
+        return _validate_tz(v)
+
 
 class ScheduleUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=128)
     cron_expr: str | None = None
+    timezone: str | None = Field(default=None, max_length=64)
     preset: SchedulePreset | None = None
     active: bool | None = None
 
@@ -62,6 +80,11 @@ class ScheduleUpdate(BaseModel):
     @classmethod
     def _check_cron(cls, v: str | None) -> str | None:
         return _validate_cron(v) if v is not None else None
+
+    @field_validator("timezone")
+    @classmethod
+    def _check_tz(cls, v: str | None) -> str | None:
+        return _validate_tz(v) if v is not None else None
 
 
 class ScheduleItem(BaseModel):
@@ -71,6 +94,7 @@ class ScheduleItem(BaseModel):
     name: str
     ticker: str
     cron_expr: str
+    timezone: str
     preset: dict[str, Any]
     active: bool
     last_run: datetime | None

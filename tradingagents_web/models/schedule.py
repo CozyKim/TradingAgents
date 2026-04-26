@@ -17,6 +17,9 @@ class Schedule(Base):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     ticker: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     cron_expr: Mapped[str] = mapped_column(String(64), nullable=False)
+    timezone: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="Asia/Seoul"
+    )
     preset: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
 

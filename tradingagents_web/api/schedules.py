@@ -75,6 +75,7 @@ def create_schedule(
         name=payload.name,
         ticker=payload.ticker,
         cron_expr=payload.cron_expr,
+        timezone=payload.timezone,
         preset=payload.preset.model_dump(),
         active=payload.active,
         source="user",
@@ -101,6 +102,8 @@ def update_schedule(
         s.name = payload.name
     if payload.cron_expr is not None:
         s.cron_expr = payload.cron_expr
+    if payload.timezone is not None:
+        s.timezone = payload.timezone
     if payload.preset is not None:
         s.preset = payload.preset.model_dump()
     if payload.active is not None:

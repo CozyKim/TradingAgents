@@ -10,11 +10,18 @@ import { CronHelper } from "./cron-helper";
 
 const ANALYSTS = ["market", "social", "news", "fundamentals"] as const;
 
+const TZ_OPTIONS: { value: string; label: string }[] = [
+  { value: "Asia/Seoul", label: "한국 (KST, UTC+9)" },
+  { value: "America/New_York", label: "미국 동부 (ET)" },
+  { value: "UTC", label: "UTC" },
+];
+
 export function ScheduleForm() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [tickers, setTickers] = useState("");
-  const [cron, setCron] = useState("30 16 * * 1-5");
+  const [cron, setCron] = useState("30 9 * * *");
+  const [tz, setTz] = useState("Asia/Seoul");
   const [rounds, setRounds] = useState(1);
   const [analysts, setAnalysts] = useState<string[]>([...ANALYSTS]);
   const m = useCreateSchedule();
@@ -30,6 +37,7 @@ export function ScheduleForm() {
         name: tickerList.length === 1 ? name : `${name} (${t})`,
         ticker: t,
         cron_expr: cron,
+        timezone: tz,
         preset: { analysts, debate_rounds: rounds },
       });
     }
@@ -65,7 +73,22 @@ export function ScheduleForm() {
         />
       </div>
       <div className="flex flex-col gap-2">
-        <Label htmlFor="cron">Cron</Label>
+        <Label htmlFor="tz">Timezone</Label>
+        <select
+          id="tz"
+          value={tz}
+          onChange={(e) => setTz(e.target.value)}
+          className="bg-bg-1 border border-border-1 rounded-md px-3 py-2 text-sm"
+        >
+          {TZ_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="cron">Cron ({tz})</Label>
         <Input
           id="cron"
           required
@@ -73,7 +96,7 @@ export function ScheduleForm() {
           onChange={(e) => setCron(e.target.value)}
           className="font-mono"
         />
-        <CronHelper value={cron} onChange={setCron} />
+        <CronHelper value={cron} timezone={tz} onChange={setCron} />
       </div>
       <div>
         <Label>Analysts</Label>

@@ -13,6 +13,7 @@ export interface Schedule {
   name: string;
   ticker: string;
   cron_expr: string;
+  timezone: string;
   preset: SchedulePreset;
   active: boolean;
   last_run: string | null;
@@ -30,6 +31,7 @@ export interface ScheduleCreatePayload {
   name: string;
   ticker: string;
   cron_expr: string;
+  timezone?: string;
   preset: SchedulePreset;
   active?: boolean;
 }
@@ -37,6 +39,7 @@ export interface ScheduleCreatePayload {
 export interface ScheduleUpdatePayload {
   name?: string;
   cron_expr?: string;
+  timezone?: string;
   preset?: SchedulePreset;
   active?: boolean;
 }
