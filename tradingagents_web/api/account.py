@@ -6,15 +6,28 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session as OrmSession
 
-from tradingagents_web.auth import get_current_user
+from tradingagents_web.auth import (
+    get_current_user,
+    hash_password,
+    require_xhr,
+    verify_password,
+)
+from tradingagents_web.config import Settings
 from tradingagents_web.db import get_db
+from tradingagents_web.models import Session as SessionModel
 from tradingagents_web.models import User
+from tradingagents_web.schemas.account import (
+    PasswordChangeRequest,
+    PasswordChangeResponse,
+)
 
 router = APIRouter(prefix="/api/settings/account", tags=["account"])
+
+_settings = Settings()
 
 
 def _resolve_sqlite_path(db: OrmSession) -> Path:
@@ -83,3 +96,41 @@ def backup_database(
         media_type="application/octet-stream",
         filename=filename,
     )
+
+
+@router.put("/password", response_model=PasswordChangeResponse)
+def change_password(
+    payload: PasswordChangeRequest,
+    request: Request,
+    db: Annotated[OrmSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+    _csrf: Annotated[None, Depends(require_xhr)] = None,
+) -> PasswordChangeResponse:
+    """Change the single user's password and optionally revoke other sessions.
+
+    Args:
+        payload: Current and new password; ``revoke_other_sessions`` defaults
+            to True so that all logged-in devices are signed out.
+        request: Used to read the current session cookie so it survives the
+            revoke step (the caller stays signed in).
+        db: Active SQLAlchemy session.
+        user: Authenticated user (raises 401 otherwise).
+        _csrf: CSRF guard.
+
+    Returns:
+        ``PasswordChangeResponse(ok=True)`` on success.
+
+    Raises:
+        HTTPException: 401 if ``current_password`` does not match.
+    """
+    if not verify_password(payload.current_password.get_secret_value(), user.password_hash):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    user.password_hash = hash_password(payload.new_password.get_secret_value())
+    if payload.revoke_other_sessions:
+        current_token = request.cookies.get(_settings.session_cookie_name)
+        q = db.query(SessionModel).filter_by(user_id=user.id)
+        if current_token:
+            q = q.filter(SessionModel.id != current_token)
+        q.delete(synchronize_session=False)
+    db.commit()
+    return PasswordChangeResponse(ok=True)
