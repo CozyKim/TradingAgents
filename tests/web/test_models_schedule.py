@@ -1,5 +1,5 @@
 """Tests for Schedule ORM model + Analysis.schedule_id FK."""
-from datetime import date, datetime, timezone
+from datetime import date
 
 from tradingagents_web.models import Analysis, Schedule
 

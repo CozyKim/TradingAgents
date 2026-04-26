@@ -1,6 +1,4 @@
 """Tests for Holding ORM model."""
-from datetime import datetime, timezone
-
 from tradingagents_web.models import Holding
 
 
