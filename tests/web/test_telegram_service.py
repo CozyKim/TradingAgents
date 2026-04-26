@@ -68,3 +68,38 @@ async def test_get_me_failure_returns_dict_with_error():
         info = await telegram.get_me("BAD:KEY")
         assert info["ok"] is False
         assert "Unauthorized" in info["error"]
+
+
+@pytest.mark.asyncio
+async def test_send_message_returns_false_on_non_json_body():
+    """A 200 response whose body is not JSON must not crash the caller."""
+    with respx.mock() as mock:
+        mock.post("https://api.telegram.org/botX:Y/sendMessage").mock(
+            return_value=httpx.Response(200, text="<html>not json</html>")
+        )
+        ok = await telegram.send_message(bot_token="X:Y", chat_id="1", text="x")
+        assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_get_me_returns_false_on_non_json_body():
+    """A 200 response whose body is not JSON must yield {ok: False, error: ...}."""
+    with respx.mock() as mock:
+        mock.get("https://api.telegram.org/botX:Y/getMe").mock(
+            return_value=httpx.Response(200, text="<html>oops</html>")
+        )
+        info = await telegram.get_me("X:Y")
+        assert info["ok"] is False
+        assert info["error"]
+
+
+@pytest.mark.asyncio
+async def test_get_me_skips_json_parse_on_5xx():
+    """A 500 with HTML body must not attempt to JSON-decode."""
+    with respx.mock() as mock:
+        mock.get("https://api.telegram.org/botX:Y/getMe").mock(
+            return_value=httpx.Response(500, text="<html>down</html>")
+        )
+        info = await telegram.get_me("X:Y")
+        assert info["ok"] is False
+        assert "500" in info["error"]

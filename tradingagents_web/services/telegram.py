@@ -27,8 +27,9 @@ async def send_message(
 ) -> bool:
     """POST sendMessage. Returns True on Telegram ``ok=true``, False otherwise.
 
-    Network failures and non-200 responses are logged and swallowed; alerting
-    must never raise into the analysis pipeline.
+    Network failures, non-200 responses, and malformed (non-JSON) bodies are
+    all logged and swallowed; alerting must never raise into the analysis
+    pipeline.
 
     Args:
         bot_token: Telegram Bot API token (e.g. ``"123456:ABC-DEF"``).
@@ -56,7 +57,7 @@ async def send_message(
             return False
         body = resp.json()
         return bool(body.get("ok"))
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, ValueError) as exc:
         logger.warning("Telegram sendMessage failed: %s", exc)
         return False
 
@@ -64,23 +65,36 @@ async def send_message(
 async def get_me(bot_token: str) -> dict[str, Any]:
     """GET getMe — verifies a bot token. Always returns a dict.
 
-    Args:
-        bot_token: Telegram Bot API token to validate.
-
     Returns:
         ``{"ok": True, "username": "<botname>"}`` on success.
-        ``{"ok": False, "error": "<reason>"}`` on failure (including network errors).
+        ``{"ok": False, "error": "<reason>"}`` on any failure (network,
+        non-200, or non-JSON body).
+
+    Args:
+        bot_token: Telegram Bot API token to validate.
     """
     url = f"{API_BASE}/bot{bot_token}/getMe"
     try:
         async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             resp = await client.get(url)
+        if resp.status_code != 200:
+            # Non-200 response: try to extract error from JSON if available,
+            # otherwise fall back to HTTP status code.
+            try:
+                body = resp.json()
+                return {
+                    "ok": False,
+                    "error": body.get("description") or f"HTTP {resp.status_code}",
+                }
+            except ValueError:
+                # Response body is not JSON (e.g., HTML error page).
+                return {"ok": False, "error": f"HTTP {resp.status_code}"}
         body = resp.json()
-        if resp.status_code != 200 or not body.get("ok"):
+        if not body.get("ok"):
             return {
                 "ok": False,
                 "error": body.get("description") or f"HTTP {resp.status_code}",
             }
         return {"ok": True, "username": body.get("result", {}).get("username")}
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, ValueError) as exc:
         return {"ok": False, "error": str(exc)}
