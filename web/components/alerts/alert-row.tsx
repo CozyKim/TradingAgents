@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Alert } from "@/lib/alerts";
 import { cn } from "@/lib/utils";
+import { formatKST } from "@/lib/datetime";
 import { SignalBadge } from "@/components/shared/signal-badge";
 import type { Decision } from "@/lib/runs";
 
@@ -52,7 +53,7 @@ export function AlertRow({
       )}
     >
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest">
+        <div className="flex items-center gap-2 text-2xs uppercase tracking-widest">
           <span className={cn(TYPE_TONE[alert.type])}>
             {TYPE_LABEL[alert.type]}
           </span>
@@ -60,7 +61,7 @@ export function AlertRow({
             <span className="font-mono text-text-2">{alert.ticker}</span>
           )}
           <span className="text-text-3">
-            {new Date(alert.created_at).toLocaleString()}
+            {formatKST(alert.created_at)}
           </span>
         </div>
         <div className="mt-1 text-sm text-text-1">{summary}</div>

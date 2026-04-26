@@ -1,6 +1,7 @@
 "use client";
 import { Button } from "@/components/ui/button";
 import { useRevokeOtherSessions, useSessions } from "@/hooks/use-account";
+import { formatKST } from "@/lib/datetime";
 
 export function AccountSessionsList() {
   const q = useSessions();
@@ -24,10 +25,10 @@ export function AccountSessionsList() {
           >
             <span className="font-mono">{s.id_masked}</span>
             <span className="text-text-3">
-              expires {new Date(s.expires_at).toLocaleString()}
+              expires {formatKST(s.expires_at)}
             </span>
             {s.is_current && (
-              <span className="text-[10px] uppercase tracking-widest text-accent">
+              <span className="text-2xs uppercase tracking-widest text-accent">
                 current
               </span>
             )}

@@ -3,15 +3,10 @@ import Link from "next/link";
 
 import { SignalBadge } from "@/components/shared/signal-badge";
 import { RunListItem } from "@/lib/runs";
+import { formatKST } from "@/lib/datetime";
 
-function fmt(ts: string) {
-  return new Date(ts).toLocaleString(undefined, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+function detailHref(r: RunListItem) {
+  return r.status === "running" ? `/run/${r.run_id}` : `/history/${r.run_id}`;
 }
 
 type Props = {
@@ -31,7 +26,7 @@ export function HistoryTable({ rows, selected, onToggle }: Props) {
   return (
     <>
       <table className="hidden md:table w-full text-xs border-collapse">
-        <thead className="text-text-3 uppercase tracking-widest text-[10px]">
+        <thead className="text-text-3 uppercase tracking-widest text-2xs">
           <tr className="border-b border-border-1">
             <th className="w-8 py-2 px-3" />
             <th className="text-left py-2 px-3">Ticker</th>
@@ -58,7 +53,7 @@ export function HistoryTable({ rows, selected, onToggle }: Props) {
                 />
               </td>
               <td className="py-2 px-3">
-                <Link href={`/history/${r.run_id}`} className="font-num font-bold">
+                <Link href={detailHref(r)} className="font-num font-bold">
                   {r.ticker}
                 </Link>
               </td>
@@ -71,7 +66,7 @@ export function HistoryTable({ rows, selected, onToggle }: Props) {
                 {r.confidence !== null ? `${(r.confidence * 100).toFixed(0)}%` : "—"}
               </td>
               <td className="py-2 px-3 text-right text-text-3 font-num">
-                {fmt(r.created_at)}
+                {formatKST(r.created_at)}
               </td>
             </tr>
           ))}
@@ -93,7 +88,7 @@ export function HistoryTable({ rows, selected, onToggle }: Props) {
                 className="accent-accent"
               />
               <Link
-                href={`/history/${r.run_id}`}
+                href={detailHref(r)}
                 className="font-num font-bold flex-1"
               >
                 {r.ticker}
@@ -101,8 +96,8 @@ export function HistoryTable({ rows, selected, onToggle }: Props) {
               <SignalBadge decision={r.decision} />
             </div>
             <Link
-              href={`/history/${r.run_id}`}
-              className="block px-3 pt-1 pb-2 text-[10px] text-text-3"
+              href={detailHref(r)}
+              className="block px-3 pt-1 pb-2 text-2xs text-text-3"
             >
               <div className="flex items-center justify-between">
                 <span className="font-num">{r.analysis_date}</span>

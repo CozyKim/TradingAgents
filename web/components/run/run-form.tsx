@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCreateRun } from "@/hooks/use-runs";
 import { Analyst, VALID_ANALYSTS } from "@/lib/runs";
+import { todayKST } from "@/lib/datetime";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayKST();
 
 export function RunForm() {
   const router = useRouter();
