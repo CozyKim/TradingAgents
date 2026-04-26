@@ -131,3 +131,48 @@ def test_test_telegram_no_token_returns_422(app_with_test_db, client):
 def test_settings_require_auth(client):
     r = client.get("/api/settings/notifications")
     assert r.status_code == 401
+
+
+def test_test_telegram_get_me_fails(app_with_test_db, client, monkeypatch):
+    _login(app_with_test_db, client)
+    from tradingagents_web.api import settings_notifications as api
+
+    monkeypatch.setattr(
+        api.telegram,
+        "get_me",
+        AsyncMock(return_value={"ok": False, "error": "Unauthorized"}),
+    )
+    monkeypatch.setattr(api.telegram, "send_message", AsyncMock(return_value=True))
+
+    r = client.post(
+        "/api/settings/notifications/test",
+        json={"telegram_bot_token": "bad:tok"},
+        headers={"X-Requested-With": "fetch"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is False
+    assert body["error"] == "Unauthorized"
+
+
+def test_test_telegram_send_message_fails(app_with_test_db, client, monkeypatch):
+    _login(app_with_test_db, client)
+    from tradingagents_web.api import settings_notifications as api
+
+    monkeypatch.setattr(
+        api.telegram,
+        "get_me",
+        AsyncMock(return_value={"ok": True, "username": "bot"}),
+    )
+    monkeypatch.setattr(api.telegram, "send_message", AsyncMock(return_value=False))
+
+    r = client.post(
+        "/api/settings/notifications/test",
+        json={"telegram_bot_token": "T:123", "telegram_chat_id": "9"},
+        headers={"X-Requested-With": "fetch"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is False
+    assert body["bot_username"] == "bot"
+    assert "sendMessage failed" in body["error"]
