@@ -25,7 +25,10 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
   },
   {
     title: "System",
-    items: [{ href: "/settings/notifications", label: "Settings", icon: "⚙" }],
+    items: [
+      { href: "/settings/notifications", label: "Notifications", icon: "⚙" },
+      { href: "/settings/account", label: "Account", icon: "◉" },
+    ],
   },
 ];
 
