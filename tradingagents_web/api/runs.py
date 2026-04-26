@@ -6,7 +6,7 @@ import json
 import logging
 import uuid
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -69,7 +69,7 @@ def start_analysis_run(
     db: OrmSession,
     *,
     ticker: str,
-    analysis_date: "date",
+    analysis_date: date,
     analysts: list[str],
     debate_rounds: int,
     llm_provider: str,
