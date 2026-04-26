@@ -5,12 +5,14 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from tradingagents_web.api import alerts as alerts_api
 from tradingagents_web.api import auth as auth_api
 from tradingagents_web.api import health
 from tradingagents_web.api import holdings as holdings_api
 from tradingagents_web.api import prices as prices_api
 from tradingagents_web.api import runs as runs_api
 from tradingagents_web.api import schedules as schedules_api
+from tradingagents_web.api import settings_notifications as settings_notifications_api
 from tradingagents_web.config import Settings
 from tradingagents_web.db import SessionLocal
 from tradingagents_web.services import auto_runner
@@ -84,10 +86,12 @@ def create_app() -> FastAPI:
     app.add_middleware(SessionRefreshMiddleware, settings=settings)
     app.include_router(health.router)
     app.include_router(auth_api.router)
-    app.include_router(runs_api.router)
+    app.include_router(alerts_api.router)
     app.include_router(holdings_api.router)
-    app.include_router(schedules_api.router)
     app.include_router(prices_api.router)
+    app.include_router(runs_api.router)
+    app.include_router(schedules_api.router)
+    app.include_router(settings_notifications_api.router)
     return app
 
 

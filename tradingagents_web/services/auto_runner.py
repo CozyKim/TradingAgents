@@ -26,6 +26,10 @@ async def trigger_run(
 ) -> str | None:
     """Fire-and-forget: load the schedule and start an analysis run.
 
+    On any exception the session is rolled back, a schedule_failure alert
+    is dispatched via the notifier, and None is returned so APScheduler
+    does not rethrow.
+
     Args:
         schedule_id: Schedule row id.
         session_factory: Zero-arg factory returning a SQLAlchemy session.
@@ -34,16 +38,19 @@ async def trigger_run(
             ``runs.set_background_session_factory`` apply transparently.
 
     Returns:
-        New run_id if started, None if the schedule was not found or inactive.
+        New run_id if started, None if the schedule was not found, inactive,
+        or if an exception occurred.
     """
     from tradingagents.default_config import DEFAULT_CONFIG
     from tradingagents_web.api import runs as runs_api
     from tradingagents_web.api.runs import start_analysis_run
+    from tradingagents_web.services import notifier
 
     if session_factory is None:
         session_factory = runs_api._session_factory
 
     db = session_factory()
+    sched_ticker: str | None = None
     try:
         sched = db.query(Schedule).get(schedule_id)
         if sched is None:
@@ -52,6 +59,7 @@ async def trigger_run(
         if not sched.active:
             logger.info("Schedule %s is inactive — skipping fire", schedule_id)
             return None
+        sched_ticker = sched.ticker
 
         preset = sched.preset or {}
         analysts = preset.get("analysts") or [
@@ -80,5 +88,18 @@ async def trigger_run(
         db.commit()
         logger.info("Schedule %s fired -> run %s", schedule_id, run_id)
         return run_id
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Schedule %s trigger failed", schedule_id)
+        try:
+            db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        await notifier.dispatch_schedule_failure(
+            schedule_id=schedule_id,
+            ticker=sched_ticker,
+            error=str(exc)[:500],
+            session_factory=session_factory,
+        )
+        return None
     finally:
         db.close()

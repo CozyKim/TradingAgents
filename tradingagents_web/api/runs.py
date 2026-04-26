@@ -132,13 +132,18 @@ async def _execute_and_persist(run_id: str, request: RunRequest) -> None:
 
     Opens a fresh DB session independent of the request-scoped session,
     since the request session is closed before this coroutine completes.
+    After the session is closed, dispatches notifier alerts for completed
+    or failed runs (cancelled runs are skipped — no decision was reached).
 
     Args:
         run_id: The UUID string identifying this analysis run.
         request: The fully populated RunRequest describing the run.
     """
+    from tradingagents_web.services import notifier
+
     runner = make_runner()
     db = _session_factory()
+    analysis_id: int | None = None
     try:
         try:
             result = await runner.run(request)
@@ -152,6 +157,7 @@ async def _execute_and_persist(run_id: str, request: RunRequest) -> None:
             row.cost_usd = result.cost_usd
             row.completed_at = datetime.now(timezone.utc)
             db.commit()
+            analysis_id = row.id
         except Exception as exc:  # noqa: BLE001 — record any failure
             logger.exception("Run %s failed", run_id)
             row = db.query(Analysis).filter_by(run_id=run_id).one_or_none()
@@ -160,6 +166,7 @@ async def _execute_and_persist(run_id: str, request: RunRequest) -> None:
                 row.error = str(exc)[:2000]
                 row.completed_at = datetime.now(timezone.utc)
                 db.commit()
+                analysis_id = row.id
             bus = get_event_bus()
             if not bus.is_finished(run_id):
                 bus.publish(
@@ -169,6 +176,11 @@ async def _execute_and_persist(run_id: str, request: RunRequest) -> None:
                 bus.finish(run_id)
     finally:
         db.close()
+
+    if analysis_id is not None:
+        await notifier.dispatch_for_analysis(
+            analysis_id, session_factory=_session_factory
+        )
 
 
 @router.post(
