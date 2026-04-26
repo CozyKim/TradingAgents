@@ -65,6 +65,7 @@ class AnalysisListItem(BaseModel):
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     created_at: datetime | str
     completed_at: datetime | None = None
+    schedule_id: int | None = None
 
 
 class AnalysisDetail(BaseModel):
@@ -86,6 +87,7 @@ class AnalysisDetail(BaseModel):
     cost_usd: float | None
     created_at: datetime
     completed_at: datetime | None
+    schedule_id: int | None = None
 
 
 class AnalysisCreateResponse(BaseModel):
