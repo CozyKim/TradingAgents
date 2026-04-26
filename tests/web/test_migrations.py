@@ -85,3 +85,58 @@ def test_migrations_run_clean(tmp_path: Path, monkeypatch) -> None:
                     created_at=datetime(2026, 1, 1, 1, 0, 0),
                 )
             )
+
+
+def test_migration_0004_alerts_settings(tmp_path: Path, monkeypatch) -> None:
+    db_file = tmp_path / "mig_0004.db"
+    monkeypatch.setenv("WEB_DATABASE_URL", f"sqlite:///{db_file}")
+
+    # Upgrade to revision 0004.
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "0004"],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPO_ROOT,
+    )
+    assert result.returncode == 0, f"alembic upgrade 0004 failed: {result.stderr}"
+    assert db_file.exists()
+
+    engine = sa.create_engine(f"sqlite:///{db_file}")
+    inspector = sa.inspect(engine)
+    tables = set(inspector.get_table_names())
+
+    # Both new tables must exist.
+    assert "alerts" in tables, "alerts table must exist after upgrade 0004"
+    assert "settings" in tables, "settings table must exist after upgrade 0004"
+
+    # --- alerts columns ---
+    alerts_col_names = {col["name"] for col in inspector.get_columns("alerts")}
+    for col in {"id", "type", "ticker", "analysis_id", "schedule_id", "payload", "read", "created_at"}:
+        assert col in alerts_col_names, f"alerts.{col} column missing"
+
+    # --- alerts indexes ---
+    alerts_index_names = {idx["name"] for idx in inspector.get_indexes("alerts")}
+    assert "ix_alerts_read_created" in alerts_index_names, "ix_alerts_read_created missing"
+    assert "ix_alerts_ticker" in alerts_index_names, "ix_alerts_ticker missing"
+    assert "ix_alerts_type" in alerts_index_names, "ix_alerts_type missing"
+
+    # --- settings columns ---
+    settings_col_names = {col["name"] for col in inspector.get_columns("settings")}
+    for col in {"key", "value", "encrypted_value", "updated_at"}:
+        assert col in settings_col_names, f"settings.{col} column missing"
+
+    # --- downgrade back to 0003 removes both tables ---
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "downgrade", "0003"],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPO_ROOT,
+    )
+    assert result.returncode == 0, f"alembic downgrade to 0003 failed: {result.stderr}"
+
+    engine2 = sa.create_engine(f"sqlite:///{db_file}")
+    tables_after = set(sa.inspect(engine2).get_table_names())
+    assert "alerts" not in tables_after, "alerts table must be removed after downgrade"
+    assert "settings" not in tables_after, "settings table must be removed after downgrade"
