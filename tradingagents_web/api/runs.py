@@ -26,7 +26,7 @@ from tradingagents_web.schemas.analysis import (
 )
 from tradingagents_web.services.event_bus import AnalysisEvent, get_event_bus
 from tradingagents_web.services.run_factory import make_runner
-from tradingagents_web.services.runner import RunRequest
+from tradingagents_web.services.runner import RunRequest, _json_safe_final_state
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/runs", tags=["runs"])
@@ -153,7 +153,7 @@ async def _execute_and_persist(run_id: str, request: RunRequest) -> None:
             row.status = "completed"
             row.decision = result.decision
             row.confidence = result.confidence
-            row.final_state = result.final_state
+            row.final_state = _json_safe_final_state(result.final_state)
             row.cost_usd = result.cost_usd
             row.completed_at = datetime.now(timezone.utc)
             db.commit()
@@ -336,7 +336,13 @@ async def stream_run(
                     "data": json.dumps(ev.data, default=str),
                 }
 
-    return EventSourceResponse(gen())
+    return EventSourceResponse(
+        gen(),
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/{run_id}", response_model=AnalysisDetail)

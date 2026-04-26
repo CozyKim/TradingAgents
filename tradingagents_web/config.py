@@ -1,7 +1,7 @@
 """Application configuration loaded from environment variables."""
 from pathlib import Path
 
-from pydantic import Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -29,7 +29,10 @@ class Settings(BaseSettings):
     cookie_secure: bool = False  # set True (via WEB_COOKIE_SECURE=true) in production behind TLS
 
     # Encryption (for stored API keys, used in M2+)
-    encryption_key: SecretStr = SecretStr("")
+    encryption_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("ENCRYPTION_KEY", "WEB_ENCRYPTION_KEY"),
+    )
 
     # Misc
     cors_allow_origins: list[str] = ["http://localhost:3000"]

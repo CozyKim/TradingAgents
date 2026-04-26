@@ -225,6 +225,7 @@ class RealRunner:
 
         rid = request.run_id
         loop = asyncio.get_running_loop()
+        estimated_total = _estimate_total_steps(request, config)
 
         def _publish_threadsafe(event: AnalysisEvent) -> None:
             """Schedule a bus.publish on the event loop from a worker thread."""
@@ -264,7 +265,7 @@ class RealRunner:
                 _publish_threadsafe(
                     AnalysisEvent(
                         type="progress",
-                        data={"step": step, "total": 0},
+                        data={"step": step, "total": max(estimated_total, step)},
                     ),
                 )
 
@@ -274,6 +275,7 @@ class RealRunner:
             final_state = await asyncio.to_thread(_build_and_stream)
             decision_text = str(final_state.get("final_trade_decision") or "")
             decision = _extract_decision(decision_text)
+            safe_final_state = _json_safe_final_state(final_state)
 
             # This publish is on the event-loop thread, so call directly.
             self.bus.publish(
@@ -286,7 +288,7 @@ class RealRunner:
             return RunResult(
                 decision=decision,
                 confidence=None,
-                final_state=final_state,
+                final_state=safe_final_state,
             )
         except Exception as exc:
             logger.exception("Real runner failed for run_id=%s", rid)
@@ -324,6 +326,90 @@ def _summarize_delta(delta: Any) -> str:
         if delta.get(key):
             return f"[{key}] {str(delta[key])[:4000]}"
     return ""
+
+
+def _estimate_total_steps(request: RunRequest, config: dict[str, Any]) -> int:
+    """Estimate the minimum number of graph stream updates for progress UI.
+
+    The real LangGraph can emit extra updates when analyst tool loops run, so
+    this is intentionally a lower-bound estimate rather than an exact promise.
+    The caller clamps the total upward if actual streamed steps exceed it.
+
+    Args:
+        request: Run request containing selected analysts and debate rounds.
+        config: Effective TradingAgents graph configuration.
+
+    Returns:
+        Positive estimated total step count for progress events.
+    """
+    analyst_steps = max(1, len(request.analysts)) * 2
+    debate_rounds = _positive_int(
+        config.get("max_debate_rounds"), default=request.debate_rounds
+    )
+    risk_rounds = _positive_int(config.get("max_risk_discuss_rounds"), default=1)
+
+    research_steps = (2 * debate_rounds) + 1  # bull/bear turns + manager
+    trader_steps = 1
+    risk_steps = (3 * risk_rounds) + 1  # aggressive/conservative/neutral + manager
+    return analyst_steps + research_steps + trader_steps + risk_steps
+
+
+def _positive_int(value: Any, *, default: int) -> int:
+    """Return a positive integer parsed from value, falling back to default.
+
+    Args:
+        value: Candidate value from runtime config.
+        default: Positive fallback value.
+
+    Returns:
+        A positive integer.
+    """
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(1, parsed)
+
+
+def _json_safe_final_state(state: dict[str, Any]) -> dict[str, Any]:
+    """Return a JSON-serializable copy of a graph final state.
+
+    LangGraph states can contain LangChain message objects and typed tuples.
+    The database stores this payload in a JSON column, so non-JSON objects must
+    be simplified while preserving the report fields used by history screens.
+
+    Args:
+        state: Raw final state returned by the runner.
+
+    Returns:
+        JSON-serializable copy of the final state.
+    """
+    return {str(key): _json_safe_value(value) for key, value in state.items()}
+
+
+def _json_safe_value(value: Any) -> Any:
+    """Convert a value into a JSON-serializable structure.
+
+    Args:
+        value: Arbitrary value from graph state.
+
+    Returns:
+        A value composed of JSON scalars, lists, and dictionaries.
+    """
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+    if isinstance(value, dict):
+        return {str(key): _json_safe_value(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_json_safe_value(item) for item in value]
+
+    content = getattr(value, "content", None)
+    if isinstance(content, str):
+        return content
+    if content is not None:
+        return _json_safe_value(content)
+
+    return str(value)
 
 
 def _extract_decision(text: str) -> str | None:

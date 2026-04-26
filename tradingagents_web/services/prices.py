@@ -8,6 +8,7 @@ grow unbounded. Each entry key is ``(TICKER, days)`` and value is
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -18,6 +19,10 @@ logger = logging.getLogger(__name__)
 
 _TTL_SECONDS = 300  # 5 minutes
 _CACHE: dict[tuple[str, int], tuple[float, PriceHistoryResponse]] = {}
+# yfinance.download is not thread-safe: concurrent calls share internal state
+# and can return another ticker's frame. Serialize the network call only —
+# cache hits stay lock-free.
+_YF_LOCK = threading.Lock()
 
 
 def _yf_download(
@@ -31,14 +36,15 @@ def _yf_download(
     """Indirection so tests can monkeypatch yfinance.download cleanly."""
     import yfinance as yf
 
-    return yf.download(
-        ticker,
-        start=start,
-        end=end,
-        interval=interval,
-        progress=progress,
-        auto_adjust=auto_adjust,
-    )
+    with _YF_LOCK:
+        return yf.download(
+            ticker,
+            start=start,
+            end=end,
+            interval=interval,
+            progress=progress,
+            auto_adjust=auto_adjust,
+        )
 
 
 def get_price_history(ticker: str, days: int = 90) -> PriceHistoryResponse:

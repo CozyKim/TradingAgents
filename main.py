@@ -24,7 +24,7 @@ config["data_vendors"] = {
 ta = TradingAgentsGraph(debug=True, config=config)
 
 # forward propagate
-_, decision = ta.propagate("NFLX", "2026-04-25")
+_, decision = ta.propagate("TSLA", "2026-04-25")
 print(decision)
 
 # Memorize mistakes and reflect

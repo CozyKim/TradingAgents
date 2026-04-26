@@ -8,6 +8,7 @@ def test_settings_loads_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENCRYPTION_KEY", "y" * 44)
     settings = Settings()
     assert settings.database_url == "sqlite:///test.db"
+    assert settings.encryption_key.get_secret_value() == "y" * 44
 
 
 def test_settings_session_max_age_default(monkeypatch: pytest.MonkeyPatch) -> None:

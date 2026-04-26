@@ -64,6 +64,8 @@ def test_stream_replays_history_then_closes_when_finished(app_with_test_db, clie
     ) as response:
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("text/event-stream")
+        assert response.headers["cache-control"] == "no-cache"
+        assert response.headers["x-accel-buffering"] == "no"
         body = b"".join(response.iter_bytes()).decode("utf-8")
 
     assert "event: agent_message" in body
