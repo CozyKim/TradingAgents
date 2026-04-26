@@ -1,6 +1,4 @@
 """Tests for the price service (yfinance wrapper + TTL cache)."""
-from datetime import date, datetime, timezone
-
 import pytest
 
 from tradingagents_web.services import prices as svc

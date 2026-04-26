@@ -1,13 +1,16 @@
 """yfinance wrapper with a small TTL cache.
 
-We store at most ~32 entries (more than enough for personal use). Each entry
-key is ``(TICKER, days)`` and value is ``(expires_at_unix, PriceHistoryResponse)``.
+In practice we expect ~32 entries (one per holding/inspect view × a few day
+windows). No eviction is implemented; for personal-use scale the dict cannot
+grow unbounded. Each entry key is ``(TICKER, days)`` and value is
+``(expires_at_unix, PriceHistoryResponse)``.
 """
 from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from typing import Any
 
 from tradingagents_web.schemas.price import PriceHistoryResponse, PricePoint
 
@@ -17,7 +20,14 @@ _TTL_SECONDS = 300  # 5 minutes
 _CACHE: dict[tuple[str, int], tuple[float, PriceHistoryResponse]] = {}
 
 
-def _yf_download(ticker, start, end, interval, progress=False, auto_adjust=True):
+def _yf_download(
+    ticker: str,
+    start: date,
+    end: date,
+    interval: str,
+    progress: bool = False,
+    auto_adjust: bool = True,
+) -> Any:
     """Indirection so tests can monkeypatch yfinance.download cleanly."""
     import yfinance as yf
 
@@ -68,6 +78,9 @@ def get_price_history(ticker: str, days: int = 90) -> PriceHistoryResponse:
         points=points,
         last_close=last_close,
     )
+    # Empty/failed responses are cached for the full TTL — acceptable at
+    # personal-use scale; revisit if transient yfinance hiccups become
+    # user-visible.
     _CACHE[key] = (now + _TTL_SECONDS, response)
     return response
 
