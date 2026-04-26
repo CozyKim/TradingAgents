@@ -25,7 +25,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
   },
   {
     title: "System",
-    items: [{ href: "/settings/llm", label: "Settings", icon: "⚙" }],
+    items: [{ href: "/settings/notifications", label: "Settings", icon: "⚙" }],
   },
 ];
 
