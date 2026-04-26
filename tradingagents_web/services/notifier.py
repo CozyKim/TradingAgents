@@ -32,6 +32,25 @@ async def _send_telegram(*, bot_token: str, chat_id: str, text: str) -> bool:
     )
 
 
+# Telegram caps a single message at 4096 chars. Reserve headroom for the
+# header + code-fence wrapping so the formatted message stays under the cap.
+_FINAL_DECISION_MAX_CHARS = 3500
+
+
+def _final_decision_block(text: str | None) -> str:
+    """Render a final_trade_decision body as a fenced code block, or empty."""
+    if not text:
+        return ""
+    body = str(text).strip()
+    if not body:
+        return ""
+    if len(body) > _FINAL_DECISION_MAX_CHARS:
+        body = body[:_FINAL_DECISION_MAX_CHARS].rstrip() + "\n…(truncated)"
+    # Code fence avoids Markdown collisions (asterisks, underscores, backticks)
+    # in the trader's free-form text.
+    return f"\n```\n{body}\n```"
+
+
 def _format_message(outcome: DiffOutcome, *, ticker: str | None) -> str:
     """Return a Markdown message body for one DiffOutcome."""
     p = outcome.payload
@@ -41,6 +60,7 @@ def _format_message(outcome: DiffOutcome, *, ticker: str | None) -> str:
         return (
             f"*Signal change* `{ticker}`\n"
             f"{p['prev']} → *{p['curr']}* (conf {conf_text})"
+            f"{_final_decision_block(p.get('final_decision_text'))}"
         )
     if outcome.type == "confidence_change":
         return (
@@ -53,6 +73,7 @@ def _format_message(outcome: DiffOutcome, *, ticker: str | None) -> str:
         return (
             f"*Analysis complete* `{ticker}`\n"
             f"{p.get('decision')} (conf {conf_text})"
+            f"{_final_decision_block(p.get('final_decision_text'))}"
         )
     if outcome.type == "run_failed":
         return f"*Analysis failed* `{ticker}`\n{(p.get('error') or '')[:200]}"

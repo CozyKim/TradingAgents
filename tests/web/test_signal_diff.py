@@ -12,6 +12,7 @@ class _Stub:
     decision: str | None
     confidence: float | None
     error: str | None = None
+    final_state: dict | None = None
 
 
 def _cfg(
@@ -44,7 +45,13 @@ def test_first_completion_run_completed_alert_when_enabled():
 
 def test_signal_change_emits_signal_change():
     prior = _Stub(id=1, ticker="AAPL", decision="HOLD", confidence=0.6)
-    curr = _Stub(id=2, ticker="AAPL", decision="BUY", confidence=0.78)
+    curr = _Stub(
+        id=2,
+        ticker="AAPL",
+        decision="BUY",
+        confidence=0.78,
+        final_state={"final_trade_decision": "FINAL TRANSACTION PROPOSAL: **BUY**\n…rationale…"},
+    )
     out = diff_for_completion(curr, prior=prior, status="completed", config=_cfg())
     types = [o.type for o in out]
     assert "signal_change" in types
@@ -54,6 +61,7 @@ def test_signal_change_emits_signal_change():
         "curr": "BUY",
         "confidence": 0.78,
         "prev_confidence": 0.6,
+        "final_decision_text": "FINAL TRANSACTION PROPOSAL: **BUY**\n…rationale…",
     }
 
 

@@ -18,6 +18,7 @@ class _AnalysisLike(Protocol):
     decision: str | None
     confidence: float | None
     error: str | None
+    final_state: dict[str, Any] | None
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,9 @@ def diff_for_completion(
     """
     outcomes: list[DiffOutcome] = []
 
+    final_state = getattr(current, "final_state", None) or {}
+    final_decision_text = final_state.get("final_trade_decision") if isinstance(final_state, Mapping) else None
+
     if status == "failed":
         if config.get("alert_on_run_failed", True):
             outcomes.append(
@@ -81,6 +85,7 @@ def diff_for_completion(
                         "curr": current.decision,
                         "confidence": current.confidence,
                         "prev_confidence": prior.confidence,
+                        "final_decision_text": final_decision_text,
                     },
                 )
             )
@@ -113,6 +118,7 @@ def diff_for_completion(
                     "ticker": current.ticker,
                     "decision": current.decision,
                     "confidence": current.confidence,
+                    "final_decision_text": final_decision_text,
                 },
             )
         )
