@@ -57,6 +57,8 @@ def create_app() -> FastAPI:
     app.include_router(holdings_api.router)
     from tradingagents_web.api import schedules as schedules_api
     app.include_router(schedules_api.router)
+    from tradingagents_web.api import prices as prices_api
+    app.include_router(prices_api.router)
     return app
 
 
