@@ -225,3 +225,6 @@ __marimo__/
 *.db
 *.db-shm
 *.db-wal
+
+# git worktrees
+.worktrees/
