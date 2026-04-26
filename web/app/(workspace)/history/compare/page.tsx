@@ -1,11 +1,11 @@
 "use client";
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 
 import { CompareColumn } from "@/components/history/compare-column";
 import { cn } from "@/lib/utils";
 
-export default function HistoryComparePage() {
+function HistoryCompareContent() {
   const sp = useSearchParams();
   const ids = (sp.get("ids") ?? "").split(",").filter(Boolean);
   const [active, setActive] = useState<0 | 1>(0);
@@ -49,5 +49,15 @@ export default function HistoryComparePage() {
         <CompareColumn runId={ids[1]} />
       </div>
     </div>
+  );
+}
+
+export default function HistoryComparePage() {
+  return (
+    <Suspense
+      fallback={<p className="px-4 md:px-6 py-6 text-xs text-text-3">Loading…</p>}
+    >
+      <HistoryCompareContent />
+    </Suspense>
   );
 }
