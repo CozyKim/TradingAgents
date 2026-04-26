@@ -1,10 +1,7 @@
 """Tests for the pure signal_diff function."""
 from dataclasses import dataclass
 
-from tradingagents_web.services.signal_diff import (
-    DiffOutcome,
-    diff_for_completion,
-)
+from tradingagents_web.services.signal_diff import diff_for_completion
 
 
 @dataclass
@@ -17,7 +14,12 @@ class _Stub:
     error: str | None = None
 
 
-def _cfg(signal=True, completed=False, failed=True, threshold=0.10):
+def _cfg(
+    signal: bool = True,
+    completed: bool = False,
+    failed: bool = True,
+    threshold: float | None = 0.10,
+) -> dict[str, object]:
     return {
         "alert_on_signal_change": signal,
         "alert_on_run_completed": completed,
@@ -91,3 +93,18 @@ def test_threshold_none_disables_confidence_alert():
         curr, prior=prior, status="completed", config=_cfg(threshold=None)
     )
     assert all(o.type != "confidence_change" for o in out)
+
+
+def test_signal_and_confidence_both_emit_in_priority_order():
+    """Decision changed AND |Δconfidence| ≥ threshold AND completed alerts on:
+    all three outcomes appear, in declared priority order."""
+    prior = _Stub(id=1, ticker="AAPL", decision="HOLD", confidence=0.4)
+    curr = _Stub(id=2, ticker="AAPL", decision="BUY", confidence=0.9)
+    out = diff_for_completion(
+        curr, prior=prior, status="completed", config=_cfg(completed=True)
+    )
+    assert [o.type for o in out] == [
+        "signal_change",
+        "confidence_change",
+        "run_completed",
+    ]
