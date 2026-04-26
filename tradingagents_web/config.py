@@ -37,3 +37,7 @@ class Settings(BaseSettings):
     # Runner: when True, use a deterministic fake graph (no LLM cost). Default False.
     fake_runner: bool = False
     fake_runner_delay_seconds: float = 0.0
+
+    # Scheduler
+    schedule_tz: str = "America/New_York"
+    scheduler_grace_seconds: int = 60
