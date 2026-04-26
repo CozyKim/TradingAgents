@@ -65,6 +65,68 @@ def _resolve_models(req: AnalysisCreateRequest) -> tuple[str, str, str]:
     return provider, deep, quick
 
 
+def start_analysis_run(
+    db: OrmSession,
+    *,
+    ticker: str,
+    analysis_date: "date",
+    analysts: list[str],
+    debate_rounds: int,
+    llm_provider: str,
+    llm_deep_model: str,
+    llm_quick_model: str,
+    schedule_id: int | None = None,
+) -> str:
+    """Persist a fresh analyses row and kick off the background runner.
+
+    Shared by ``POST /api/runs`` and the scheduler-driven auto runner.
+
+    Args:
+        db: SQLAlchemy session for inserting the analyses row.
+        ticker: Normalized ticker symbol (uppercased).
+        analysis_date: Trading date the analysis targets.
+        analysts: List of analyst roles.
+        debate_rounds: Bull/bear debate rounds.
+        llm_provider: LLM provider id.
+        llm_deep_model: Deep model id.
+        llm_quick_model: Quick model id.
+        schedule_id: If non-None, links the run to a schedule.
+
+    Returns:
+        The new ``run_id`` UUID string.
+    """
+    run_id = str(uuid.uuid4())
+    row = Analysis(
+        run_id=run_id,
+        ticker=ticker,
+        analysis_date=analysis_date,
+        status="running",
+        llm_provider=llm_provider,
+        llm_deep_model=llm_deep_model,
+        llm_quick_model=llm_quick_model,
+        debate_rounds=debate_rounds,
+        analysts=analysts,
+        schedule_id=schedule_id,
+    )
+    db.add(row)
+    db.commit()
+
+    request = RunRequest(
+        run_id=run_id,
+        ticker=ticker,
+        analysis_date=analysis_date,
+        analysts=analysts,
+        debate_rounds=debate_rounds,
+        llm_provider=llm_provider,
+        llm_deep_model=llm_deep_model,
+        llm_quick_model=llm_quick_model,
+    )
+    task = asyncio.create_task(_execute_and_persist(run_id, request))
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+    return run_id
+
+
 async def _execute_and_persist(run_id: str, request: RunRequest) -> None:
     """Background task: run the analysis and write the final state to DB.
 
@@ -139,27 +201,9 @@ async def create_run(
         HTTPException: 401 if not authenticated, 403 if CSRF check fails,
             422 if the request payload is invalid.
     """
-    # _resolve_models reads DEFAULT_CONFIG lazily; make_runner() re-reads Settings()
-    # so test monkeypatch.setenv takes effect at call time.
     provider, deep, quick = _resolve_models(payload)
-
-    run_id = str(uuid.uuid4())
-    row = Analysis(
-        run_id=run_id,
-        ticker=payload.ticker,
-        analysis_date=payload.analysis_date,
-        status="running",
-        llm_provider=provider,
-        llm_deep_model=deep,
-        llm_quick_model=quick,
-        debate_rounds=payload.debate_rounds,
-        analysts=payload.analysts,
-    )
-    db.add(row)
-    db.commit()
-
-    request = RunRequest(
-        run_id=run_id,
+    run_id = start_analysis_run(
+        db,
         ticker=payload.ticker,
         analysis_date=payload.analysis_date,
         analysts=payload.analysts,
@@ -168,9 +212,6 @@ async def create_run(
         llm_deep_model=deep,
         llm_quick_model=quick,
     )
-    task = asyncio.create_task(_execute_and_persist(run_id, request))
-    _BACKGROUND_TASKS.add(task)
-    task.add_done_callback(_BACKGROUND_TASKS.discard)
     return AnalysisCreateResponse(run_id=run_id)
 
 
