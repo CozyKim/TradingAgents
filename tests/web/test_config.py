@@ -30,3 +30,11 @@ def test_cookie_secure_loads_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("WEB_COOKIE_SECURE", "true")
     settings = Settings()
     assert settings.cookie_secure is True
+
+
+def test_settings_includes_schedule_tz_default():
+    from tradingagents_web.config import Settings
+
+    s = Settings()
+    assert s.schedule_tz == "America/New_York"
+    assert s.scheduler_grace_seconds == 60

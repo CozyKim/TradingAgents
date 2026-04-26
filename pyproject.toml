@@ -10,9 +10,11 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "alembic>=1.13",
+    "apscheduler>=3.10",
     "backtrader>=1.9.78.123",
     "bcrypt>=4.1",
     "cryptography>=43.0",
+    "croniter>=2.0",
     "fastapi>=0.115",
     "langchain-anthropic>=0.3.15",
     "langchain-core>=0.3.81",
