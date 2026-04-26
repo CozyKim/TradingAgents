@@ -1,29 +1,43 @@
-"""Tests for SchedulerService."""
-import asyncio
-from datetime import datetime, timezone
+"""Tests for SchedulerService.
 
-import pytest
+Tests run inside pytest-asyncio's auto-mode loop because
+``AsyncIOScheduler.start()`` requires a running event loop. Shutdown
+defers state mutation to ``call_soon_threadsafe``, so we yield to the
+loop a couple of times before asserting on ``is_running()``.
+"""
+import asyncio
+
+import pytest_asyncio
 
 from tradingagents_web.models import Schedule
 from tradingagents_web.services.scheduler import SchedulerService
 
 
-@pytest.fixture()
-def svc():
+async def _yield_loop(times: int = 3) -> None:
+    for _ in range(times):
+        await asyncio.sleep(0)
+
+
+@pytest_asyncio.fixture()
+async def svc():
     s = SchedulerService(tz="UTC")
-    yield s
-    if s.is_running():
-        s.shutdown()
+    try:
+        yield s
+    finally:
+        if s.is_running():
+            s.shutdown()
+            await _yield_loop()
 
 
-def test_start_and_shutdown(svc):
+async def test_start_and_shutdown(svc):
     svc.start()
     assert svc.is_running() is True
     svc.shutdown()
+    await _yield_loop()
     assert svc.is_running() is False
 
 
-def test_register_schedule_creates_apjob(svc, app_with_test_db):
+async def test_register_schedule_creates_apjob(svc, app_with_test_db):
     _, TestSessionLocal = app_with_test_db
     db = TestSessionLocal()
     try:
@@ -53,10 +67,8 @@ def test_register_schedule_creates_apjob(svc, app_with_test_db):
     assert job.next_run_time is not None
 
 
-def test_unregister_drops_apjob(svc):
+async def test_unregister_drops_apjob(svc):
     svc.start()
-    sched = type("S", (), {"id": 99, "cron_expr": "0 9 * * *", "active": True})()
-    # Manually add a noop job to exercise unregister path
     svc.scheduler.add_job(lambda: None, "cron", id=svc._job_id(99), minute=0, hour=9)
     svc.unregister(99)
     assert svc.get_job(99) is None

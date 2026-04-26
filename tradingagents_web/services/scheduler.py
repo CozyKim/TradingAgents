@@ -7,7 +7,6 @@ keep the scheduler in sync via :meth:`register` / :meth:`unregister`.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime
@@ -44,34 +43,12 @@ class SchedulerService:
         self._on_trigger = cb
 
     def start(self) -> None:
-        if self.scheduler.running:
-            return
-        # AsyncIOScheduler.start() needs a running event loop. In production we
-        # are inside the FastAPI lifespan (a running loop). In tests/sync code
-        # there is no running loop, so attach a fresh one before starting.
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            if self.scheduler._eventloop is None or self.scheduler._eventloop.is_closed():
-                self.scheduler._eventloop = asyncio.new_event_loop()
-        self.scheduler.start()
+        if not self.scheduler.running:
+            self.scheduler.start()
 
     def shutdown(self) -> None:
-        if not self.scheduler.running:
-            return
-        loop = self.scheduler._eventloop
-        if loop is not None and loop.is_running():
+        if self.scheduler.running:
             self.scheduler.shutdown(wait=False)
-            return
-        # No running loop: APScheduler's shutdown defers state mutation to the
-        # loop, which never runs in sync tests. Stop synchronously instead so
-        # ``is_running()`` flips to False and the loop is closed cleanly.
-        from apscheduler.schedulers.base import STATE_STOPPED
-
-        self.scheduler.state = STATE_STOPPED
-        if loop is not None and not loop.is_closed():
-            loop.close()
-        self.scheduler._eventloop = None
 
     def is_running(self) -> bool:
         return self.scheduler.running
