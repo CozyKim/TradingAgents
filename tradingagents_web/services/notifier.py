@@ -63,14 +63,39 @@ def _final_decision_body(text: str | None) -> str:
     return f"\n\n{escaped}"
 
 
-def _format_message(outcome: DiffOutcome, *, ticker: str | None) -> str:
+def _md2_url(url: str) -> str:
+    """Escape a URL for the (...) part of a MarkdownV2 inline link.
+
+    Per Telegram docs, only ``)`` and ``\\`` need escaping inside link URLs.
+    """
+    return url.replace("\\", "\\\\").replace(")", "\\)")
+
+
+def _analysis_link(base_url: str | None, analysis_id: int | None) -> str:
+    """Build a MarkdownV2 inline-link line, or empty if either input missing."""
+    if not base_url or analysis_id is None:
+        return ""
+    href = f"{base_url.rstrip('/')}/history/{analysis_id}"
+    return f"\n[{_md2('View analysis →')}]({_md2_url(href)})"
+
+
+def _format_message(
+    outcome: DiffOutcome,
+    *,
+    ticker: str | None,
+    analysis_id: int | None = None,
+    web_base_url: str | None = None,
+) -> str:
     """Return a MarkdownV2 message body for one DiffOutcome.
 
     Static markup (``*bold*``, `` `code` ``) in the headers is intentionally
     left unescaped so it renders. All dynamic values are escaped via ``_md2``.
+    A clickable link to the analysis detail page is appended when both
+    ``analysis_id`` and ``web_base_url`` are set.
     """
     p = outcome.payload
     tk = _md2(ticker or "?")
+    link = _analysis_link(web_base_url, analysis_id)
     if outcome.type == "signal_change":
         conf = p.get("confidence")
         conf_text = _md2(f"{conf:.2f}") if conf is not None else _md2("—")
@@ -79,6 +104,7 @@ def _format_message(outcome: DiffOutcome, *, ticker: str | None) -> str:
             f"{_md2(p['prev'])} → *{_md2(p['curr'])}* "
             f"\\(conf {conf_text}\\)"
             f"{_final_decision_body(p.get('final_decision_text'))}"
+            f"{link}"
         )
     if outcome.type == "confidence_change":
         prev = _md2(f"{p['prev']:.2f}")
@@ -87,6 +113,7 @@ def _format_message(outcome: DiffOutcome, *, ticker: str | None) -> str:
         return (
             f"*Confidence shift* `{tk}`\n"
             f"{prev} → {curr} \\(Δ {delta}\\)"
+            f"{link}"
         )
     if outcome.type == "run_completed":
         conf = p.get("confidence")
@@ -96,10 +123,11 @@ def _format_message(outcome: DiffOutcome, *, ticker: str | None) -> str:
             f"*Analysis complete* `{tk}`\n"
             f"{decision} \\(conf {conf_text}\\)"
             f"{_final_decision_body(p.get('final_decision_text'))}"
+            f"{link}"
         )
     if outcome.type == "run_failed":
         err = _md2((p.get("error") or "")[:200])
-        return f"*Analysis failed* `{tk}`\n{err}"
+        return f"*Analysis failed* `{tk}`\n{err}{link}"
     if outcome.type == "schedule_failed":
         err = _md2((p.get("error") or "")[:200])
         return f"*Schedule failed* `{tk}`\n{err}"
@@ -238,11 +266,17 @@ async def _persist_and_push(
     if not bot_token or not chat_id:
         return
 
+    web_base_url = cfg.get("web_base_url")
     sends = [
         _send_telegram(
             bot_token=bot_token,
             chat_id=chat_id,
-            text=_format_message(o, ticker=ticker),
+            text=_format_message(
+                o,
+                ticker=ticker,
+                analysis_id=analysis_id,
+                web_base_url=web_base_url,
+            ),
         )
         for o in outcomes
     ]

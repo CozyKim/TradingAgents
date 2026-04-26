@@ -42,6 +42,18 @@ def test_get_defaults(app_with_test_db, client):
     assert body["alert_on_signal_change"] is True
     assert body["alert_on_run_completed"] is False
     assert body["confidence_change_threshold"] == 0.10
+    assert body["web_base_url"] is None
+
+
+def test_put_persists_web_base_url(app_with_test_db, client):
+    _login(app_with_test_db, client)
+    r = client.put(
+        "/api/settings/notifications",
+        json={"web_base_url": "https://trading.example.com"},
+        headers={"X-Requested-With": "fetch"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["web_base_url"] == "https://trading.example.com"
 
 
 def test_put_update_partial_and_get(app_with_test_db, client):

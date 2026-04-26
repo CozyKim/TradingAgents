@@ -24,6 +24,9 @@ NOTIFICATION_DEFAULTS: dict[str, Any] = {
     "alert_on_run_failed": True,
     "alert_on_schedule_failed": True,
     "confidence_change_threshold": 0.10,
+    # Public base URL of the web UI (e.g. "https://trading.example.com"); used
+    # to build clickable analysis links in Telegram alerts. None = no link.
+    "web_base_url": None,
 }
 
 ENCRYPTED_KEYS: frozenset[str] = frozenset({"telegram_bot_token"})

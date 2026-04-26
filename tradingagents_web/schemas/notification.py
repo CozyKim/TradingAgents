@@ -12,6 +12,7 @@ class NotificationSettingsResponse(BaseModel):
     alert_on_run_failed: bool
     alert_on_schedule_failed: bool
     confidence_change_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    web_base_url: str | None = None
 
 
 class NotificationSettingsUpdate(BaseModel):
@@ -24,6 +25,7 @@ class NotificationSettingsUpdate(BaseModel):
     alert_on_run_failed: bool | None = None
     alert_on_schedule_failed: bool | None = None
     confidence_change_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    web_base_url: str | None = None
 
 
 class TelegramTestRequest(BaseModel):

@@ -18,6 +18,7 @@ export function NotificationsForm() {
   const [runFailed, setRunFailed] = useState(true);
   const [scheduleFailed, setScheduleFailed] = useState(true);
   const [threshold, setThreshold] = useState("0.10");
+  const [webBaseUrl, setWebBaseUrl] = useState("");
 
   useEffect(() => {
     if (!data) return;
@@ -27,6 +28,7 @@ export function NotificationsForm() {
     setRunFailed(data.alert_on_run_failed);
     setScheduleFailed(data.alert_on_schedule_failed);
     setThreshold(String(data.confidence_change_threshold ?? 0.1));
+    setWebBaseUrl(data.web_base_url ?? "");
   }, [data]);
 
   if (isLoading || !data) {
@@ -43,6 +45,7 @@ export function NotificationsForm() {
       alert_on_run_failed: runFailed,
       alert_on_schedule_failed: scheduleFailed,
       confidence_change_threshold: Number(threshold),
+      web_base_url: webBaseUrl,
     });
     setToken("");
   }
@@ -129,6 +132,22 @@ export function NotificationsForm() {
             value={threshold}
             onChange={(e) => setThreshold(e.target.value)}
             className="mt-1 w-32 rounded-md border border-border-1 bg-bg-1 px-2 py-1.5 font-mono text-sm text-text-1"
+          />
+        </label>
+      </fieldset>
+
+      <fieldset className="space-y-2">
+        <legend className="text-xs uppercase tracking-widest text-text-3">
+          Links
+        </legend>
+        <label className="block text-xs text-text-2">
+          Web base URL (used for clickable analysis links in Telegram)
+          <input
+            type="url"
+            placeholder="https://trading.example.com"
+            value={webBaseUrl}
+            onChange={(e) => setWebBaseUrl(e.target.value)}
+            className="mt-1 w-full rounded-md border border-border-1 bg-bg-1 px-2 py-1.5 font-mono text-sm text-text-1"
           />
         </label>
       </fieldset>

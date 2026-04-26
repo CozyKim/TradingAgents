@@ -137,6 +137,60 @@ async def test_dispatch_schedule_failure_creates_alert(app_with_test_db, monkeyp
 
 
 @pytest.mark.asyncio
+async def test_telegram_message_includes_analysis_link_when_base_url_set(
+    app_with_test_db, monkeypatch
+):
+    """When web_base_url is configured, Telegram payload includes a clickable link."""
+    _, TestSessionLocal = app_with_test_db
+    sender = AsyncMock(return_value=True)
+    monkeypatch.setattr(notifier, "_send_telegram", sender)
+
+    db = TestSessionLocal()
+    try:
+        settings_store.save_notification_config(
+            db,
+            updates={
+                "telegram_bot_token": "T:OK",
+                "telegram_chat_id": "9",
+                "web_base_url": "https://trading.example.com/",
+            },
+        )
+        _make_analysis(db, ticker="AAPL", decision="HOLD", confidence=0.5)
+        curr = _make_analysis(db, ticker="AAPL", decision="BUY", confidence=0.8)
+        await notifier.dispatch_for_analysis(curr.id, session_factory=TestSessionLocal)
+    finally:
+        db.close()
+
+    sender.assert_awaited()
+    sent_texts = [c.kwargs["text"] for c in sender.await_args_list]
+    expected_url = f"https://trading.example.com/history/{curr.id}"
+    assert any(expected_url in t for t in sent_texts), sent_texts
+
+
+@pytest.mark.asyncio
+async def test_telegram_message_omits_link_when_base_url_unset(
+    app_with_test_db, monkeypatch
+):
+    _, TestSessionLocal = app_with_test_db
+    sender = AsyncMock(return_value=True)
+    monkeypatch.setattr(notifier, "_send_telegram", sender)
+
+    db = TestSessionLocal()
+    try:
+        settings_store.save_notification_config(
+            db, updates={"telegram_bot_token": "T:OK", "telegram_chat_id": "9"}
+        )
+        _make_analysis(db, ticker="AAPL", decision="HOLD", confidence=0.5)
+        curr = _make_analysis(db, ticker="AAPL", decision="BUY", confidence=0.8)
+        await notifier.dispatch_for_analysis(curr.id, session_factory=TestSessionLocal)
+    finally:
+        db.close()
+
+    sent_texts = [c.kwargs["text"] for c in sender.await_args_list]
+    assert all("View analysis" not in t for t in sent_texts), sent_texts
+
+
+@pytest.mark.asyncio
 async def test_dispatch_swallows_exceptions(app_with_test_db, monkeypatch, caplog):
     """Notifier must never raise into the runner."""
     _, TestSessionLocal = app_with_test_db

@@ -8,6 +8,7 @@ export interface NotificationSettings {
   alert_on_run_failed: boolean;
   alert_on_schedule_failed: boolean;
   confidence_change_threshold: number | null;
+  web_base_url: string | null;
 }
 
 export type NotificationSettingsUpdate = Partial<{
@@ -18,6 +19,7 @@ export type NotificationSettingsUpdate = Partial<{
   alert_on_run_failed: boolean;
   alert_on_schedule_failed: boolean;
   confidence_change_threshold: number;
+  web_base_url: string;
 }>;
 
 export interface TelegramTestResponse {

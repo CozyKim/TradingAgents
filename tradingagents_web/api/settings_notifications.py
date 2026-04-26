@@ -29,6 +29,7 @@ def _to_response(cfg: dict) -> NotificationSettingsResponse:
         alert_on_run_failed=cfg["alert_on_run_failed"],
         alert_on_schedule_failed=cfg["alert_on_schedule_failed"],
         confidence_change_threshold=cfg["confidence_change_threshold"],
+        web_base_url=cfg.get("web_base_url"),
     )
 
 
