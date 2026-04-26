@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from tradingagents_web.api import alerts as alerts_api
 from tradingagents_web.api import auth as auth_api
 from tradingagents_web.api import health
 from tradingagents_web.api import holdings as holdings_api
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
     app.add_middleware(SessionRefreshMiddleware, settings=settings)
     app.include_router(health.router)
     app.include_router(auth_api.router)
+    app.include_router(alerts_api.router)
     app.include_router(runs_api.router)
     app.include_router(holdings_api.router)
     app.include_router(schedules_api.router)
