@@ -1,7 +1,11 @@
 """Tests for Pydantic schemas under schemas/schedule.py."""
 import pytest
 
-from tradingagents_web.schemas.schedule import ScheduleCreate, SchedulePreset
+from tradingagents_web.schemas.schedule import (
+    ScheduleCreate,
+    SchedulePreset,
+    ScheduleUpdate,
+)
 
 
 def test_schedule_create_validates_cron():
@@ -27,3 +31,14 @@ def test_schedule_create_rejects_bad_cron():
 def test_schedule_preset_rejects_unknown_analyst():
     with pytest.raises(ValueError):
         SchedulePreset(analysts=["bogus"], debate_rounds=1)
+
+
+def test_schedule_update_rejects_bad_cron():
+    with pytest.raises(ValueError):
+        ScheduleUpdate(cron_expr="not a cron")
+
+
+def test_schedule_update_allows_none_cron():
+    u = ScheduleUpdate(active=False)
+    assert u.cron_expr is None
+    assert u.active is False

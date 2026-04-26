@@ -1,6 +1,6 @@
 """Pydantic schemas for the schedules API."""
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from croniter import croniter
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -71,7 +71,7 @@ class ScheduleItem(BaseModel):
     name: str
     ticker: str
     cron_expr: str
-    preset: dict
+    preset: dict[str, Any]
     active: bool
     last_run: datetime | None
     next_run: datetime | None
