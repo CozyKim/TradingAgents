@@ -53,6 +53,8 @@ def create_app() -> FastAPI:
     app.include_router(auth_api.router)
     from tradingagents_web.api import runs as runs_api
     app.include_router(runs_api.router)
+    from tradingagents_web.api import holdings as holdings_api
+    app.include_router(holdings_api.router)
     return app
 
 
