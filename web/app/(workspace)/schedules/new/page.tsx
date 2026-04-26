@@ -6,7 +6,7 @@ export default function NewSchedulePage() {
   return (
     <div className="px-4 md:px-6 py-6 md:py-8 max-w-screen-xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-text-1 mb-1">New schedule</h1>
+        <h1 className="text-2xl font-bold text-text-1 mb-1">New schedule</h1>
         <p className="text-xs text-text-3">
           Pick tickers, a cron expression, and analysis preset.{" "}
           <Link className="underline" href="/schedules">

@@ -17,7 +17,7 @@ export function MetricCard({
   return (
     <Card>
       <CardContent className="py-4">
-        <div className="text-[10px] uppercase tracking-widest text-text-3">
+        <div className="text-2xs uppercase tracking-widest text-text-3">
           {label}
         </div>
         <div className={cn("font-mono text-xl tabular-nums mt-1", toneCls)}>

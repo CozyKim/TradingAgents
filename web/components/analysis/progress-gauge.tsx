@@ -3,8 +3,8 @@ export function ProgressGauge({ step, total }: { step: number; total: number }) 
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-[10px] uppercase tracking-widest text-text-3">Progress</span>
-        <span className="text-[10px] font-num text-text-2">
+        <span className="text-2xs uppercase tracking-widest text-text-3">Progress</span>
+        <span className="text-2xs font-num text-text-2">
           {step}/{total || "?"} · {pct}%
         </span>
       </div>

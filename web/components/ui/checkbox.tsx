@@ -16,7 +16,7 @@ const Checkbox = React.forwardRef<
     {...props}
   >
     <CheckboxPrimitive.Indicator className="flex items-center justify-center text-current">
-      <span aria-hidden className="text-[10px] font-bold leading-none">
+      <span aria-hidden className="text-2xs font-bold leading-none">
         ✓
       </span>
     </CheckboxPrimitive.Indicator>

@@ -1,3 +1,4 @@
+import { MarkdownText, type TextRenderMode } from "@/components/analysis/markdown-text";
 import { cn } from "@/lib/utils";
 
 const ROLE_STYLES: Record<string, string> = {
@@ -14,10 +15,12 @@ export function AgentCard({
   role,
   text,
   ts,
+  renderMode = "markdown",
 }: {
   role: string;
   text: string;
   ts?: string | number;
+  renderMode?: TextRenderMode;
 }) {
   return (
     <div
@@ -27,14 +30,23 @@ export function AgentCard({
       )}
     >
       <div className="flex items-center justify-between mb-1">
-        <span className="text-[10px] uppercase tracking-widest text-text-3 font-medium">
+        <span className="text-2xs uppercase tracking-widest text-text-3 font-medium">
           {role}
         </span>
-        {ts && <span className="text-[10px] font-num text-text-3">{ts}</span>}
+        {ts && <span className="text-2xs font-num text-text-3">{ts}</span>}
       </div>
-      <pre className="text-xs text-text-2 whitespace-pre-wrap font-sans leading-snug">
-        {text}
-      </pre>
+      {renderMode === "plain" ? (
+        <MarkdownText
+          className="text-xs text-text-2 leading-snug"
+          mode="plain"
+          text={text}
+        />
+      ) : (
+        <MarkdownText
+          className="text-xs text-text-2 leading-snug [&_p]:leading-snug"
+          text={text}
+        />
+      )}
     </div>
   );
 }

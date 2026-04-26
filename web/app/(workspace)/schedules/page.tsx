@@ -11,7 +11,7 @@ export default function SchedulesPage() {
     <div className="px-4 md:px-6 py-6 md:py-8 max-w-screen-xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-text-1 mb-1">Schedules</h1>
+          <h1 className="text-2xl font-bold text-text-1 mb-1">Schedules</h1>
           <p className="text-xs text-text-3">
             Cron-driven auto analyses. Holdings with monitor on appear here too.
           </p>

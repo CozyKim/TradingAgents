@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useCreateSchedule } from "@/hooks/use-schedules";
-import { CronHelper } from "./cron-helper";
+import { CronBuilder } from "./cron-builder";
 
 const ANALYSTS = ["market", "social", "news", "fundamentals"] as const;
 

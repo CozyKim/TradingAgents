@@ -13,7 +13,10 @@ import { RunListItem } from "@/lib/runs";
 export default function DashboardPage() {
   const { data: holdings } = useHoldings();
   const { data: schedules } = useSchedules();
-  const { data: runs } = useRunList({ page_size: 100 });
+  const { data: runs } = useRunList(
+    { page_size: 100 },
+    { refetchInterval: 5000, staleTime: 0 },
+  );
   const [prices, setPrices] = useState<Record<string, number | null>>({});
 
   useEffect(() => {
@@ -77,7 +80,7 @@ export default function DashboardPage() {
   return (
     <div className="px-4 md:px-6 py-6 md:py-8 max-w-screen-xl mx-auto space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-text-1 mb-1">Dashboard</h1>
+        <h1 className="text-2xl font-bold text-text-1 mb-1">Dashboard</h1>
         <p className="text-xs text-text-3">Personal workbench</p>
       </div>
 
@@ -120,7 +123,15 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           {runningRuns.length === 0 ? (
-            <p className="text-sm text-text-3">Nothing running.</p>
+            <div className="flex flex-col items-start gap-3 py-2">
+              <p className="text-sm text-text-2">No analyses running.</p>
+              <Link
+                href="/run"
+                className="inline-flex items-center gap-1 rounded-md border border-border-1 bg-bg-2 px-3 py-1.5 text-xs text-text-1 hover:bg-bg-1 hover:border-border-2"
+              >
+                + Start a new run
+              </Link>
+            </div>
           ) : (
             <ul className="flex flex-col gap-2">
               {runningRuns.map((r) => (

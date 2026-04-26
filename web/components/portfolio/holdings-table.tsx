@@ -25,7 +25,7 @@ export function HoldingsTable({
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-[10px] uppercase tracking-wider text-text-3 border-b border-border-1">
+          <tr className="text-2xs uppercase tracking-wider text-text-3 border-b border-border-1">
             <th className="text-left py-2">Ticker</th>
             <th className="text-right">Qty</th>
             <th className="text-right">Avg Cost</th>

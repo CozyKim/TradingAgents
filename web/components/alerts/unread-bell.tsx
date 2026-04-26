@@ -13,7 +13,7 @@ export function UnreadBell() {
     >
       <span aria-hidden>⚑</span>
       {count > 0 && (
-        <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-accent text-[10px] leading-4 text-white text-center font-mono">
+        <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-accent text-2xs leading-4 text-white text-center font-mono">
           {count > 99 ? "99+" : count}
         </span>
       )}

@@ -16,7 +16,7 @@ export default function MorePage() {
   const router = useRouter();
   return (
     <div className="px-4 py-6 max-w-screen-md mx-auto space-y-3">
-      <h1 className="text-xl font-bold text-text-1">More</h1>
+      <h1 className="text-2xl font-bold text-text-1">More</h1>
       <ul className="grid gap-2">
         {ITEMS.map((it) => (
           <li key={it.href}>

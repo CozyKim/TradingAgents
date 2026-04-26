@@ -22,7 +22,7 @@ export function SignalBadge({
     return (
       <span
         className={cn(
-          "px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-bg-2 text-text-3",
+          "px-1.5 py-0.5 rounded text-2xs font-mono uppercase tracking-wider bg-bg-2 text-text-3",
           className,
         )}
       >
@@ -33,7 +33,7 @@ export function SignalBadge({
   return (
     <span
       className={cn(
-        "px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider",
+        "px-1.5 py-0.5 rounded text-2xs font-mono uppercase tracking-wider",
         STYLES[decision],
         className,
       )}

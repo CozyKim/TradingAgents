@@ -20,7 +20,7 @@ export function HistoryFilters({
   return (
     <div className="flex flex-wrap items-end gap-3 mb-4">
       <div>
-        <div className="text-[10px] uppercase tracking-widest text-text-3 mb-1">
+        <div className="text-2xs uppercase tracking-widest text-text-3 mb-1">
           Ticker
         </div>
         <input
@@ -33,7 +33,7 @@ export function HistoryFilters({
         />
       </div>
       <div>
-        <div className="text-[10px] uppercase tracking-widest text-text-3 mb-1">
+        <div className="text-2xs uppercase tracking-widest text-text-3 mb-1">
           Status
         </div>
         <select
@@ -52,7 +52,7 @@ export function HistoryFilters({
         </select>
       </div>
       <div>
-        <div className="text-[10px] uppercase tracking-widest text-text-3 mb-1">
+        <div className="text-2xs uppercase tracking-widest text-text-3 mb-1">
           Decision
         </div>
         <select

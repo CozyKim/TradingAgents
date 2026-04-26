@@ -10,16 +10,24 @@ import {
   RunStatus,
 } from "@/lib/runs";
 
-export function useRunList(params: {
-  ticker?: string;
-  status?: RunStatus;
-  decision?: Decision;
-  page?: number;
-  page_size?: number;
-}) {
+export function useRunList(
+  params: {
+    ticker?: string;
+    status?: RunStatus;
+    decision?: Decision;
+    page?: number;
+    page_size?: number;
+  },
+  options: {
+    refetchInterval?: number | false;
+    staleTime?: number;
+  } = {},
+) {
   return useQuery({
     queryKey: ["runs", params],
     queryFn: () => listRuns(params),
+    refetchInterval: options.refetchInterval,
+    staleTime: options.staleTime,
   });
 }
 

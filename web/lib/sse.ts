@@ -1,3 +1,5 @@
+import { resolveRunStreamUrl } from "@/lib/sse-url";
+
 export type SseHandlers = {
   onEvent?: (type: string, data: unknown, raw: MessageEvent) => void;
   onError?: (err: Event) => void;
@@ -7,7 +9,7 @@ export type SseHandlers = {
 const TYPES = ["agent_message", "progress", "done", "error", "cancelled", "close"] as const;
 
 export function openRunStream(runId: string, handlers: SseHandlers): () => void {
-  const url = `/api/runs/${encodeURIComponent(runId)}/stream`;
+  const url = resolveRunStreamUrl(runId);
   const es = new EventSource(url, { withCredentials: true });
 
   for (const t of TYPES) {

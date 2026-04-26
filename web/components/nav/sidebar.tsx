@@ -1,33 +1,44 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  LayoutDashboard,
+  Play,
+  History,
+  Briefcase,
+  Clock,
+  Flag,
+  Bell,
+  UserCircle2,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/shared/logo";
 
-type NavItem = { href: string; label: string; icon: string };
+type NavItem = { href: string; label: string; icon: LucideIcon };
 
 const SECTIONS: { title: string; items: NavItem[] }[] = [
   {
     title: "Workspace",
     items: [
-      { href: "/", label: "Dashboard", icon: "▦" },
-      { href: "/run", label: "Run Analysis", icon: "▶" },
-      { href: "/history", label: "History", icon: "▤" },
+      { href: "/", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/run", label: "Run Analysis", icon: Play },
+      { href: "/history", label: "History", icon: History },
     ],
   },
   {
     title: "Tracking",
     items: [
-      { href: "/portfolio", label: "Portfolio", icon: "◈" },
-      { href: "/schedules", label: "Schedules", icon: "◷" },
-      { href: "/alerts", label: "Alerts", icon: "⚑" },
+      { href: "/portfolio", label: "Portfolio", icon: Briefcase },
+      { href: "/schedules", label: "Schedules", icon: Clock },
+      { href: "/alerts", label: "Alerts", icon: Flag },
     ],
   },
   {
     title: "System",
     items: [
-      { href: "/settings/notifications", label: "Notifications", icon: "⚙" },
-      { href: "/settings/account", label: "Account", icon: "◉" },
+      { href: "/settings/notifications", label: "Notifications", icon: Bell },
+      { href: "/settings/account", label: "Account", icon: UserCircle2 },
     ],
   },
 ];
@@ -42,7 +53,7 @@ export function Sidebar() {
       <nav className="flex flex-col gap-3">
         {SECTIONS.map((section) => (
           <div key={section.title}>
-            <div className="px-2 pb-1 text-[10px] uppercase tracking-widest text-text-3">
+            <div className="px-2 pb-1 text-2xs uppercase tracking-widest text-text-3">
               {section.title}
             </div>
             <ul className="flex flex-col gap-0.5">
@@ -51,6 +62,7 @@ export function Sidebar() {
                   item.href === "/"
                     ? pathname === "/"
                     : pathname.startsWith(item.href);
+                const Icon = item.icon;
                 return (
                   <li key={item.href}>
                     <Link
@@ -62,7 +74,7 @@ export function Sidebar() {
                           : "text-text-2 hover:bg-bg-2 hover:text-text-1",
                       )}
                     >
-                      <span aria-hidden>{item.icon}</span>
+                      <Icon className="h-3.5 w-3.5" aria-hidden />
                       <span>{item.label}</span>
                     </Link>
                   </li>

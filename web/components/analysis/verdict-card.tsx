@@ -15,7 +15,7 @@ export function VerdictCard({
   return (
     <div className="rounded-lg border border-border-1 bg-gradient-to-br from-bg-1 to-bg-2 px-5 py-4">
       <div className="flex items-center gap-2 mb-2">
-        <span className="text-[10px] uppercase tracking-widest text-text-3">
+        <span className="text-2xs uppercase tracking-widest text-text-3">
           {preliminary ? "Preliminary" : "Verdict"}
         </span>
       </div>

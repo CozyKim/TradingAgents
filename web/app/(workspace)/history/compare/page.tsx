@@ -19,7 +19,7 @@ function HistoryCompareContent() {
 
   return (
     <div className="px-4 md:px-6 py-6 md:py-8 max-w-screen-2xl mx-auto">
-      <h1 className="text-xl font-bold text-text-1 mb-3">Compare</h1>
+      <h1 className="text-2xl font-bold text-text-1 mb-3">Compare</h1>
 
       {/* Mobile: A/B tab switcher */}
       <div className="md:hidden flex gap-1 mb-3 text-xs">
