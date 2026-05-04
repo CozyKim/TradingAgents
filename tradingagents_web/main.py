@@ -11,6 +11,7 @@ from tradingagents_web.api import auth as auth_api
 from tradingagents_web.api import health
 from tradingagents_web.api import holdings as holdings_api
 from tradingagents_web.api import prices as prices_api
+from tradingagents_web.api import fx as fx_api
 from tradingagents_web.api import runs as runs_api
 from tradingagents_web.api import schedules as schedules_api
 from tradingagents_web.api import settings_notifications as settings_notifications_api
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(alerts_api.router)
     app.include_router(holdings_api.router)
     app.include_router(prices_api.router)
+    app.include_router(fx_api.router)
     app.include_router(runs_api.router)
     app.include_router(schedules_api.router)
     app.include_router(settings_notifications_api.router)
