@@ -10,6 +10,14 @@
 
 **Spec:** `docs/superpowers/specs/2026-05-05-ticker-korean-search-design.md`
 
+**Per-task Codex review:** 각 Task의 commit 직후에 Codex로 변경 사항을 리뷰한다. 리뷰 결과는 verbatim으로 사용자에게 보여주고, **사용자 확인 전까지 자동 수정하지 않는다**. 리뷰 명령(공통):
+
+```bash
+node "/Users/kimjaehyun/.claude/plugins/cache/openai-codex/codex/1.0.4/scripts/codex-companion.mjs" review --wait
+```
+
+리뷰가 `pass`면 다음 Task로 진행. `needs-attention` 이상이면 사용자에게 결과를 보여주고 후속 조치 결정을 받는다.
+
 ---
 
 ## File Structure
@@ -96,6 +104,14 @@ Expected: PASS (이 시점에는 시드 파일을 import하는 코드가 없으�
 git add web/lib/ticker-aliases.ts
 git commit -m "feat(web): seed ticker aliases for korean search"
 ```
+
+- [ ] **Step 4: Codex 리뷰**
+
+Run:
+```bash
+node "/Users/kimjaehyun/.claude/plugins/cache/openai-codex/codex/1.0.4/scripts/codex-companion.mjs" review --wait
+```
+Expected: 리뷰 결과(verdict) 출력. verdict가 `pass`면 다음 Task로. `needs-attention` 이상이면 결과를 사용자에게 verbatim으로 전달하고 후속 조치 결정을 받는다(자동 수정 금지).
 
 ---
 
@@ -338,6 +354,14 @@ git add web/lib/ticker-search.ts web/lib/ticker-search.test.cjs
 git commit -m "feat(web): ticker search with korean alias support"
 ```
 
+- [ ] **Step 7: Codex 리뷰**
+
+Run:
+```bash
+node "/Users/kimjaehyun/.claude/plugins/cache/openai-codex/codex/1.0.4/scripts/codex-companion.mjs" review --wait
+```
+Expected: 리뷰 결과 출력. verdict 처리는 Task 1 Step 4와 동일.
+
 ---
 
 ## Task 3: 입력 확정(검증) 로직 + 테스트
@@ -485,6 +509,14 @@ Expected: PASS
 git add web/lib/ticker-search.ts web/lib/ticker-search.test.cjs
 git commit -m "feat(web): ticker input commit guard (korean/pattern validation)"
 ```
+
+- [ ] **Step 7: Codex 리뷰**
+
+Run:
+```bash
+node "/Users/kimjaehyun/.claude/plugins/cache/openai-codex/codex/1.0.4/scripts/codex-companion.mjs" review --wait
+```
+Expected: 리뷰 결과 출력. verdict 처리는 Task 1 Step 4와 동일. (가드 로직이 보안/검증 영역이므로 특히 주의 깊게 본다.)
 
 ---
 
@@ -728,6 +760,14 @@ git add web/components/ui/ticker-combobox.tsx
 git commit -m "feat(web): TickerCombobox autocomplete with korean alias guard"
 ```
 
+- [ ] **Step 4: Codex 리뷰**
+
+Run:
+```bash
+node "/Users/kimjaehyun/.claude/plugins/cache/openai-codex/codex/1.0.4/scripts/codex-companion.mjs" review --wait
+```
+Expected: 리뷰 결과 출력. verdict 처리는 Task 1 Step 4와 동일.
+
 ---
 
 ## Task 5: RunForm에 TickerCombobox 통합
@@ -797,6 +837,14 @@ git add web/components/run/run-form.tsx
 git commit -m "feat(web/run-form): use TickerCombobox for korean ticker search"
 ```
 
+- [ ] **Step 5: Codex 리뷰**
+
+Run:
+```bash
+node "/Users/kimjaehyun/.claude/plugins/cache/openai-codex/codex/1.0.4/scripts/codex-companion.mjs" review --wait
+```
+Expected: 리뷰 결과 출력. verdict 처리는 Task 1 Step 4와 동일.
+
 ---
 
 ## Task 6: HoldingForm에 TickerCombobox 통합
@@ -854,6 +902,14 @@ Expected: PASS
 git add web/components/portfolio/holding-form.tsx
 git commit -m "feat(web/holding-form): use TickerCombobox for korean ticker search"
 ```
+
+- [ ] **Step 4: Codex 리뷰**
+
+Run:
+```bash
+node "/Users/kimjaehyun/.claude/plugins/cache/openai-codex/codex/1.0.4/scripts/codex-companion.mjs" review --wait
+```
+Expected: 리뷰 결과 출력. verdict 처리는 Task 1 Step 4와 동일.
 
 ---
 
@@ -1003,6 +1059,14 @@ Expected: PASS
 git add web/components/schedules/schedule-form.tsx
 git commit -m "feat(web/schedule-form): chip-based multi-ticker input"
 ```
+
+- [ ] **Step 4: Codex 리뷰**
+
+Run:
+```bash
+node "/Users/kimjaehyun/.claude/plugins/cache/openai-codex/codex/1.0.4/scripts/codex-companion.mjs" review --wait
+```
+Expected: 리뷰 결과 출력. verdict 처리는 Task 1 Step 4와 동일. (다중 티커 칩 상태 관리/제출 흐름의 미묘한 버그를 특히 점검.)
 
 ---
 
