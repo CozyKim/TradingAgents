@@ -1,3 +1,5 @@
+"use client";
+import { useCurrency, formatPrice } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 
 export function PnLCell({
@@ -9,6 +11,7 @@ export function PnLCell({
   avgCost: number;
   lastPrice: number | null;
 }) {
+  const ctx = useCurrency();
   if (lastPrice == null)
     return <span className="text-text-3 font-mono text-xs">—</span>;
   const cost = qty * avgCost;
@@ -18,8 +21,7 @@ export function PnLCell({
   const cls = pnl >= 0 ? "text-pos" : "text-neg";
   return (
     <span className={cn("font-mono text-xs tabular-nums", cls)}>
-      {pnl >= 0 ? "+" : ""}
-      {pnl.toFixed(2)} ({pct >= 0 ? "+" : ""}
+      {formatPrice(pnl, ctx, { signed: true })} ({pct >= 0 ? "+" : ""}
       {pct.toFixed(1)}%)
     </span>
   );
