@@ -10,6 +10,7 @@ import { useChartSettings } from "@/hooks/use-chart-settings";
 import { ChartStack } from "@/components/portfolio/chart-stack";
 import { SignalMarker } from "@/components/portfolio/price-chart";
 import { SignalBadge } from "@/components/shared/signal-badge";
+import { useCurrency, formatPrice } from "@/lib/currency";
 
 export default function PortfolioDetail() {
   const params = useParams<{ ticker: string }>();
@@ -18,6 +19,7 @@ export default function PortfolioDetail() {
   const { data: history } = useRunList({ ticker, page_size: 50 });
   const { data: price, isLoading: priceLoading } = usePriceHistory(ticker, 90);
   const { settings, setSettings, reset } = useChartSettings();
+  const ctx = useCurrency();
 
   const holding = holdings?.items.find((h) => h.ticker === ticker);
 
@@ -62,7 +64,7 @@ export default function PortfolioDetail() {
                 Avg cost
               </div>
               <div className="font-mono tabular-nums">
-                {holding.avg_cost.toFixed(2)}
+                {formatPrice(holding.avg_cost, ctx)}
               </div>
             </div>
             <div>
@@ -70,7 +72,7 @@ export default function PortfolioDetail() {
                 Last
               </div>
               <div className="font-mono tabular-nums">
-                {last != null ? last.toFixed(2) : "—"}
+                {formatPrice(last, ctx)}
               </div>
             </div>
             <div>
@@ -82,7 +84,7 @@ export default function PortfolioDetail() {
                   pnl == null ? "" : pnl >= 0 ? "text-pos" : "text-neg"
                 }`}
               >
-                {pnl == null ? "—" : `${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}`}
+                {formatPrice(pnl, ctx, { signed: true })}
               </div>
             </div>
           </CardContent>
