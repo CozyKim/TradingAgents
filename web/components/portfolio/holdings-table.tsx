@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Holding } from "@/lib/holdings";
 import { useDeleteHolding } from "@/hooks/use-holdings";
+import { useCurrency, formatPrice } from "@/lib/currency";
 import { MonitorToggle } from "./monitor-toggle";
 import { PnLCell } from "./pnl-cell";
 
@@ -14,6 +15,7 @@ export function HoldingsTable({
   prices: Record<string, number | null>;
 }) {
   const del = useDeleteHolding();
+  const ctx = useCurrency();
   if (rows.length === 0) {
     return (
       <p className="text-sm text-text-3 py-8 text-center">
@@ -47,10 +49,10 @@ export function HoldingsTable({
                 </td>
                 <td className="text-right font-mono tabular-nums">{h.qty}</td>
                 <td className="text-right font-mono tabular-nums">
-                  {h.avg_cost.toFixed(2)}
+                  {formatPrice(h.avg_cost, ctx)}
                 </td>
                 <td className="text-right font-mono tabular-nums">
-                  {last == null ? "—" : last.toFixed(2)}
+                  {formatPrice(last, ctx)}
                 </td>
                 <td className="text-right">
                   <PnLCell qty={h.qty} avgCost={h.avg_cost} lastPrice={last} />
