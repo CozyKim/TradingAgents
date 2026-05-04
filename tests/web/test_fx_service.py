@@ -25,6 +25,7 @@ def test_get_rate_returns_last_close(monkeypatch):
     out = svc.get_usd_krw_rate()
     assert out.pair == "USDKRW"
     assert out.rate == 1382.1
+    assert out.as_of is not None
     assert out.as_of.isoformat() == "2026-05-05"
     assert captured["calls"] == 1
 
