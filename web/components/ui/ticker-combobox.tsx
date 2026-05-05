@@ -35,6 +35,24 @@ export function TickerCombobox({
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const listboxId = React.useId();
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  // query가 부모 value(=확정 티커)와 다르거나 error 상태면 native form submit 차단.
+  // setCustomValidity의 인자가 비어 있지 않으면 input은 invalid로 간주된다.
+  React.useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    let message = "";
+    if (error) {
+      message = error;
+    } else if (query.trim() !== value) {
+      // 사용자가 타이핑 중이거나 commit이 끝나지 않았다 — 부모 상태와 불일치
+      message = "티커를 확정하려면 목록에서 선택하거나 Enter를 누르세요";
+    } else if (required && !value) {
+      message = "티커를 입력하세요";
+    }
+    el.setCustomValidity(message);
+  }, [query, value, error, required]);
 
   // 부모가 value를 외부에서 바꾼 경우(예: form reset) query 동기화
   React.useEffect(() => {
@@ -147,6 +165,7 @@ export function TickerCombobox({
       <PopoverAnchor asChild>
         <div className={cn("relative", className)}>
           <Input
+            ref={inputRef}
             id={id}
             role="combobox"
             aria-expanded={open}
