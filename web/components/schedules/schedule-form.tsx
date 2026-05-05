@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { TickerCombobox } from "@/components/ui/ticker-combobox";
 import { useCreateSchedule } from "@/hooks/use-schedules";
 import { CronBuilder } from "./cron-builder";
 
@@ -19,7 +20,8 @@ const TZ_OPTIONS: { value: string; label: string }[] = [
 export function ScheduleForm() {
   const router = useRouter();
   const [name, setName] = useState("");
-  const [tickers, setTickers] = useState("");
+  const [tickers, setTickers] = useState<string[]>([]);
+  const [tickerDraft, setTickerDraft] = useState("");
   const [cron, setCron] = useState("30 9 * * *");
   const [tz, setTz] = useState("Asia/Seoul");
   const [rounds, setRounds] = useState(1);
@@ -28,13 +30,10 @@ export function ScheduleForm() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const tickerList = tickers
-      .split(/[,\s]+/)
-      .map((t) => t.trim().toUpperCase())
-      .filter(Boolean);
-    for (const t of tickerList) {
+    if (tickers.length === 0) return;
+    for (const t of tickers) {
       await m.mutateAsync({
-        name: tickerList.length === 1 ? name : `${name} (${t})`,
+        name: tickers.length === 1 ? name : `${name} (${t})`,
         ticker: t,
         cron_expr: cron,
         timezone: tz,
@@ -42,6 +41,16 @@ export function ScheduleForm() {
       });
     }
     router.push("/schedules");
+  };
+
+  const addTicker = (t: string) => {
+    if (!t) return;
+    setTickers((cur) => (cur.includes(t) ? cur : [...cur, t]));
+    setTickerDraft("");
+  };
+
+  const removeTicker = (t: string) => {
+    setTickers((cur) => cur.filter((x) => x !== t));
   };
 
   const toggleAnalyst = (a: string) => {
@@ -63,13 +72,37 @@ export function ScheduleForm() {
         />
       </div>
       <div>
-        <Label htmlFor="tickers">Tickers (comma or space separated)</Label>
-        <Input
+        <Label htmlFor="tickers">Tickers</Label>
+        {tickers.length > 0 ? (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {tickers.map((t) => (
+              <span
+                key={t}
+                className="inline-flex items-center gap-1 rounded-full bg-bg-2 px-3 py-1 text-xs font-bold"
+              >
+                {t}
+                <button
+                  type="button"
+                  onClick={() => removeTicker(t)}
+                  aria-label={`Remove ${t}`}
+                  className="text-text-3 hover:text-text-1"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
+        <TickerCombobox
           id="tickers"
-          required
-          value={tickers}
-          onChange={(e) => setTickers(e.target.value)}
-          placeholder="AAPL, NVDA, AMD"
+          value={tickerDraft}
+          onChange={(t) => {
+            // 확정된 티커가 들어오면 즉시 칩으로 추가하고 입력란 비움.
+            // 빈 값(취소)은 무시.
+            if (t) addTicker(t);
+            else setTickerDraft("");
+          }}
+          placeholder="AAPL 또는 애플 (확정 시 칩으로 추가)"
         />
       </div>
       <div className="flex flex-col gap-2">
@@ -116,7 +149,7 @@ export function ScheduleForm() {
           onChange={(e) => setRounds(Number(e.target.value))}
         />
       </div>
-      <Button type="submit" disabled={m.isPending}>
+      <Button type="submit" disabled={m.isPending || tickers.length === 0}>
         {m.isPending ? "Creating…" : "Create schedule(s)"}
       </Button>
       {m.error ? <p className="text-xs text-neg">{(m.error as Error).message}</p> : null}
