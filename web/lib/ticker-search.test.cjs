@@ -228,3 +228,21 @@ test("commitInput: free-form english ticker passes only when seed has no match a
   // MSTR: not in this test seed, also no substring match → pattern fallback ok
   assert.deepEqual(commitInput("MSTR", { seed: SEED }), { status: "ok", ticker: "MSTR" });
 });
+
+test("commitInput: ignores caller-provided limit when checking matches (regression for Codex P2)", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  // With a wide seed, low-score name matches could be cut off by limit.
+  // commitInput must scan the full seed regardless of limit option.
+  const WIDE_SEED = [
+    { ticker: "AA", name: "Alcoa Corporation", aliases: [] },
+    { ticker: "AAL", name: "American Airlines", aliases: [] },
+    { ticker: "AAP", name: "Advance Auto Parts", aliases: [] },
+    { ticker: "AAPL", name: "Apple Inc.", aliases: ["애플"] },
+    { ticker: "AAU", name: "Almaden Minerals", aliases: [] },
+    { ticker: "GOOGL", name: "Alphabet Inc.", aliases: ["알파벳"] }, // substring "a" via name
+  ];
+  // Even when limit=2 would cut off Alphabet (substring score 300),
+  // commit must still see the name match and force selection.
+  const result = commitInput("a", { seed: WIDE_SEED, limit: 2 });
+  assert.equal(result.status, "needs_selection");
+});
