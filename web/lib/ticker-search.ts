@@ -153,26 +153,28 @@ export function commitInput(raw: string, options: SearchOptions = {}): CommitRes
 
   // 2단계: 정확일치 없음 → 한글 포함 여부로 분기
 
-  // 한글 포함 → 부분일치 결과 확인
+  // 2단계: 정확일치 없음 → 시드의 부분일치 결과를 우선 확인
+  // 시드가 "무언가" 알고 있으면(예: tesla → TSLA name match, TSL → TSLA prefix)
+  // 자유 입력으로 확정하지 말고 사용자가 선택하도록 강제한다.
+  // 이 검사는 한글/영문 모두 동일하게 적용해 자유입력 누수 경로를 단일화한다.
+  const partialResults = searchTickers(q, options);
+  if (partialResults.length > 0) {
+    return { status: "needs_selection", candidates: partialResults };
+  }
+
+  // 3단계: 시드에 어떤 매치도 없음 → 자유 입력 평가
   if (hasHangul) {
-    const results = searchTickers(q, options);
-    if (results.length > 0) {
-      return { status: "needs_selection", candidates: results };
-    }
-    // 시드에 매치 없음 → 한글+영문 혼합 여부 재판단
     if (/[A-Z0-9]/.test(upper.replace(/[ㄱ-ㆎ가-힣]/g, ""))) {
       return { status: "invalid", reason: "mixed" };
     }
     return { status: "invalid", reason: "korean_no_match" };
   }
 
-  // 한글+영문 혼합 (hangul 없이 특수문자만 있는 경우는 아래 패턴에서 걸림)
   const hasNonHangulNonTickerChar = /[^A-Z0-9.\-ㄱ-ㆎ가-힣]/.test(upper);
   if (hasNonHangulNonTickerChar) {
     return { status: "invalid", reason: "english_pattern" };
   }
 
-  // 3단계: 영문 전용 → 패턴 검사 후 통과면 대문자 티커로 확정
   if (TICKER_PATTERN.test(upper)) {
     return { status: "ok", ticker: upper };
   }

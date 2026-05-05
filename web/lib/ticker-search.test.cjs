@@ -198,3 +198,28 @@ test("commitInput: ambiguous alias across multiple tickers requires selection", 
   const result = commitInput("구글", { seed: SEED });
   assert.equal(result.status, "needs_selection");
 });
+
+test("commitInput: english company name partial match forces selection (regression for Codex P2)", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  // "tesla" matches TSLA via name substring → must not auto-confirm "TESLA"
+  const r1 = commitInput("tesla", { seed: SEED });
+  assert.equal(r1.status, "needs_selection");
+  // "apple" matches AAPL via name prefix → must not auto-confirm "APPLE"
+  const r2 = commitInput("apple", { seed: SEED });
+  assert.equal(r2.status, "needs_selection");
+});
+
+test("commitInput: english ticker prefix forces selection", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  // "tsl" is a prefix of TSLA → user must select instead of auto-confirming "TSL"
+  const result = commitInput("tsl", { seed: SEED });
+  assert.equal(result.status, "needs_selection");
+});
+
+test("commitInput: free-form english ticker passes only when seed has no match at all", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  // SOFI: not in seed and no name/alias contains "sofi" → pattern fallback ok
+  assert.deepEqual(commitInput("SOFI", { seed: SEED }), { status: "ok", ticker: "SOFI" });
+  // MSTR: not in this test seed, also no substring match → pattern fallback ok
+  assert.deepEqual(commitInput("MSTR", { seed: SEED }), { status: "ok", ticker: "MSTR" });
+});
