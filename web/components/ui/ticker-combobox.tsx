@@ -30,7 +30,8 @@ export function TickerCombobox({
   className,
 }: TickerComboboxProps) {
   const [query, setQuery] = React.useState(value);
-  const [highlight, setHighlight] = React.useState(0);
+  // -1 = no explicit navigation yet; user must press ArrowDown/Up or hover to set
+  const [highlight, setHighlight] = React.useState(-1);
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const listboxId = React.useId();
@@ -49,8 +50,9 @@ export function TickerCombobox({
     return searchTickers(query);
   }, [query]);
 
+  // 결과가 줄어들었거나 새 query라 무효해진 highlight는 -1로 리셋(자동 선택 방지)
   React.useEffect(() => {
-    if (highlight >= results.length) setHighlight(0);
+    if (highlight >= results.length) setHighlight(-1);
   }, [results.length, highlight]);
 
   const setValid = (valid: boolean) => {
@@ -102,22 +104,23 @@ export function TickerCombobox({
     if (e.key === "ArrowDown" && results.length > 0) {
       e.preventDefault();
       setOpen(true);
-      setHighlight((h) => Math.min(results.length - 1, h + 1));
+      setHighlight((h) => (h < 0 ? 0 : Math.min(results.length - 1, h + 1)));
       return;
     }
     if (e.key === "ArrowUp" && results.length > 0) {
       e.preventDefault();
       setOpen(true);
-      setHighlight((h) => Math.max(0, h - 1));
+      setHighlight((h) => (h <= 0 ? results.length - 1 : h - 1));
       return;
     }
     if (e.key === "Enter") {
-      if (open && results[highlight]) {
+      // 사용자가 ↑↓로 후보를 명시적으로 선택했을 때만 자동 선택.
+      // 그렇지 않으면(highlight=-1) 자유 입력으로 commit 시도.
+      if (highlight >= 0 && results[highlight]) {
         e.preventDefault();
         selectResult(results[highlight]);
         return;
       }
-      // 자유 입력 확정 시도 — 폼 제출은 commit 결과에 따라 막거나 허용
       if (!commit(query)) {
         e.preventDefault();
       }
@@ -130,10 +133,10 @@ export function TickerCombobox({
   };
 
   const onBlur = () => {
-    // 약간의 지연 — 옵션 클릭이 먼저 처리되도록
-    setTimeout(() => {
-      if (!open) commit(query);
-    }, 100);
+    // 옵션 mousedown은 onMouseDown.preventDefault로 blur를 막으므로 이 경로는
+    // 옵션 외부로 포커스가 빠지는 경우만 실행된다. open 상태에 의존하지 말고
+    // 항상 commit해서 부모 value를 정확히 반영한다.
+    commit(query);
   };
 
   return (
