@@ -114,16 +114,16 @@ export function TickerCombobox({
       return;
     }
     if (e.key === "Enter") {
-      // 사용자가 ↑↓로 후보를 명시적으로 선택했을 때만 자동 선택.
-      // 그렇지 않으면(highlight=-1) 자유 입력으로 commit 시도.
+      // Combobox 안에서 Enter는 form submit으로 전파되지 않도록 항상 막는다.
+      // commit()이 onChange로 부모 state를 갱신하지만 React 배칭 때문에 같은
+      // 이벤트 사이클에서 form submit이 stale ticker를 읽을 수 있다. 사용자는
+      // 제출하려면 Submit 버튼/Tab→Enter처럼 다른 이벤트 사이클을 거쳐야 한다.
+      e.preventDefault();
       if (highlight >= 0 && results[highlight]) {
-        e.preventDefault();
         selectResult(results[highlight]);
         return;
       }
-      if (!commit(query)) {
-        e.preventDefault();
-      }
+      commit(query);
       return;
     }
     if (e.key === "Escape") {
