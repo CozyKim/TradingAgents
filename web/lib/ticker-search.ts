@@ -111,21 +111,52 @@ export function commitInput(raw: string, options: SearchOptions = {}): CommitRes
 
   const hasHangul = HANGUL_RE.test(q);
   const upper = q.toUpperCase();
-  const hasNonHangulNonTickerChar = /[^A-Z0-9.\-ㄱ-ㆎ가-힣]/.test(upper);
 
-  // 공백/특수문자 포함 → 무효 (한글/영문 공통)
-  if (hasNonHangulNonTickerChar) {
-    return { status: "invalid", reason: hasHangul ? "korean_no_match" : "english_pattern" };
+  // 1단계: 한글/영문/특수문자 불문하고 시드 정확일치(ticker 또는 alias) 먼저 시도
+  //        searchTickers는 score 기준 내림차순으로 정렬해 반환하므로 EXACT 점수 항목만 필터링
+  const seed = options.seed ?? getDefaultSeed();
+  const qLower = q.toLowerCase();
+  const exactHits: SearchResult[] = [];
+  for (const entry of seed) {
+    // ticker 정확일치
+    if (entry.ticker.toLowerCase() === qLower) {
+      exactHits.push({
+        ticker: entry.ticker,
+        name: entry.name,
+        matched: "ticker",
+        matchedText: entry.ticker,
+        score: SCORE.TICKER_EXACT,
+      });
+      continue;
+    }
+    // alias 정확일치 (NFC 정규화 + 대소문자 무시)
+    for (const alias of entry.aliases) {
+      if (normalize(alias).toLowerCase() === qLower) {
+        exactHits.push({
+          ticker: entry.ticker,
+          name: entry.name,
+          matched: "alias",
+          matchedText: alias,
+          score: SCORE.ALIAS_EXACT,
+        });
+        break;
+      }
+    }
   }
 
-  // 한글 포함 → 먼저 시드 정확일치 시도 (한글+영문 혼합 별칭 "알파벳A" 같은 케이스 포함)
+  if (exactHits.length === 1) {
+    return { status: "ok", ticker: exactHits[0].ticker };
+  }
+  if (exactHits.length > 1) {
+    return { status: "needs_selection", candidates: exactHits };
+  }
+
+  // 2단계: 정확일치 없음 → 한글 포함 여부로 분기
+
+  // 한글 포함 → 부분일치 결과 확인
   if (hasHangul) {
     const results = searchTickers(q, options);
-    const exactAliasHits = results.filter((r) => r.matched === "alias" && r.score >= SCORE.ALIAS_EXACT);
-    if (exactAliasHits.length === 1) {
-      return { status: "ok", ticker: exactAliasHits[0].ticker };
-    }
-    if (exactAliasHits.length > 1 || results.length > 0) {
+    if (results.length > 0) {
       return { status: "needs_selection", candidates: results };
     }
     // 시드에 매치 없음 → 한글+영문 혼합 여부 재판단
@@ -135,7 +166,13 @@ export function commitInput(raw: string, options: SearchOptions = {}): CommitRes
     return { status: "invalid", reason: "korean_no_match" };
   }
 
-  // 영문 → 패턴 검사 후 통과면 대문자 티커로 확정
+  // 한글+영문 혼합 (hangul 없이 특수문자만 있는 경우는 아래 패턴에서 걸림)
+  const hasNonHangulNonTickerChar = /[^A-Z0-9.\-ㄱ-ㆎ가-힣]/.test(upper);
+  if (hasNonHangulNonTickerChar) {
+    return { status: "invalid", reason: "english_pattern" };
+  }
+
+  // 3단계: 영문 전용 → 패턴 검사 후 통과면 대문자 티커로 확정
   if (TICKER_PATTERN.test(upper)) {
     return { status: "ok", ticker: upper };
   }

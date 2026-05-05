@@ -164,3 +164,37 @@ test("commitInput: mixed korean+english is invalid", () => {
   const { commitInput } = loadTsModule("ticker-search.ts");
   assert.equal(commitInput("알파벳GOOGL", { seed: SEED }).status, "invalid");
 });
+
+test("commitInput: english alias auto-resolves to ticker (regression for Codex P2)", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  const SEED_WITH_ENG_ALIAS = [
+    { ticker: "MSFT", name: "Microsoft Corporation", aliases: ["마이크로소프트", "MS"] },
+    { ticker: "TSM", name: "Taiwan Semiconductor Manufacturing", aliases: ["TSMC", "대만반도체"] },
+    { ticker: "BAC", name: "Bank of America Corporation", aliases: ["뱅크오브아메리카", "BoA"] },
+  ];
+  assert.deepEqual(commitInput("MS", { seed: SEED_WITH_ENG_ALIAS }), { status: "ok", ticker: "MSFT" });
+  assert.deepEqual(commitInput("ms", { seed: SEED_WITH_ENG_ALIAS }), { status: "ok", ticker: "MSFT" });
+  assert.deepEqual(commitInput("TSMC", { seed: SEED_WITH_ENG_ALIAS }), { status: "ok", ticker: "TSM" });
+  assert.deepEqual(commitInput("BoA", { seed: SEED_WITH_ENG_ALIAS }), { status: "ok", ticker: "BAC" });
+});
+
+test("commitInput: special-char alias auto-resolves to ticker (regression for Codex P2)", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  const SEED_WITH_SPECIAL = [
+    { ticker: "SPY", name: "SPDR S&P 500 ETF Trust", aliases: ["S&P500", "스파이"] },
+  ];
+  assert.deepEqual(commitInput("S&P500", { seed: SEED_WITH_SPECIAL }), { status: "ok", ticker: "SPY" });
+});
+
+test("commitInput: ticker-as-input still resolves to itself", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  // 시드에 있는 정식 티커는 ticker-exact match로 ok 처리
+  assert.deepEqual(commitInput("AAPL", { seed: SEED }), { status: "ok", ticker: "AAPL" });
+});
+
+test("commitInput: ambiguous alias across multiple tickers requires selection", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  // SEED has GOOGL/GOOG both with alias "구글" → ambiguous
+  const result = commitInput("구글", { seed: SEED });
+  assert.equal(result.status, "needs_selection");
+});
