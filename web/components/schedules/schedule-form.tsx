@@ -43,10 +43,14 @@ export function ScheduleForm() {
     router.push("/schedules");
   };
 
+  // 칩 추가 후 항상 setTickerDraft를 통해 부모 value를 변경시켜 combobox key를 다르게
+  // 만든다. 중복 티커도 동일 효과를 받도록 timestamp 기반 nonce 사용.
+  const [resetNonce, setResetNonce] = useState(0);
   const addTicker = (t: string) => {
     if (!t) return;
     setTickers((cur) => (cur.includes(t) ? cur : [...cur, t]));
     setTickerDraft("");
+    setResetNonce((n) => n + 1);
   };
 
   const removeTicker = (t: string) => {
@@ -93,11 +97,11 @@ export function ScheduleForm() {
             ))}
           </div>
         ) : null}
-        {/* key를 칩 개수로 두어 칩 추가 시마다 remount → 내부 query/error/highlight를
-            완전히 리셋. setCustomValidity의 query!=value 체크도 매 remount 시점에서
-            value=""(=새 마운트의 prop)와 query=""(초기 state)이 일치해 통과한다. */}
+        {/* resetNonce를 매 칩 추가 시마다 증가시켜 remount → 내부 query/error/highlight를
+            완전히 리셋. 중복 티커 추가도 동일 처리. setCustomValidity의 query!=value
+            체크도 매 remount 시점에 value="", query="" 일치해 통과한다. */}
         <TickerCombobox
-          key={`ticker-input-${tickers.length}`}
+          key={`ticker-input-${resetNonce}`}
           id="tickers"
           value={tickerDraft}
           onChange={(t) => {

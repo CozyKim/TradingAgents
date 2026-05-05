@@ -169,13 +169,13 @@ export function commitInput(raw: string, options: SearchOptions = {}): CommitRes
 
   // 영문 입력: 회사명/별칭 prefix 매치만 가드한다.
   // - prefix 매치(예: "tesla" → "Tesla Inc." 시작): 사용자가 회사명으로 입력 → 선택 강제
-  // - substring 매치(예: "f" → "Netflix" 안의 'f'): 1글자 영문이 광범위 false-positive를
-  //   만들기 때문에 자유 입력을 막지 않는다. 드롭다운에는 substring도 표시.
+  // - substring 매치(예: "f" → "Netflix" 안의 'f'): 자유 입력을 막지 않는다.
   // - ticker prefix 매치(예: "MS" → MSFT prefix이지만 MS는 Morgan Stanley 실제 티커):
   //   자유 입력 보존.
-  // - 1글자 영문(예: "A"=Agilent, "T"=AT&T, "C"=Citigroup): 거의 모든 알파벳이 시드 회사명의
-  //   첫 글자라 가드를 건너뛴다. 사용자가 1글자 자유 티커를 의도적으로 입력한다고 본다.
-  const hasNamePrefixMatch = upper.length >= 2 && seed.some((entry) => {
+  // - 1~2글자 영문(예: "A"=Agilent, "BA"=Boeing, "MS"=Morgan Stanley): 너무 짧으면
+  //   시드 회사명의 일반 prefix와 거의 항상 겹치므로 가드를 건너뛴다. 짧은 티커는
+  //   사용자가 의도적으로 자유 입력한 것으로 간주.
+  const hasNamePrefixMatch = upper.length >= 3 && seed.some((entry) => {
     if (entry.name.toLowerCase().startsWith(qLower)) return true;
     return entry.aliases.some((a) => normalize(a).toLowerCase().startsWith(qLower));
   });

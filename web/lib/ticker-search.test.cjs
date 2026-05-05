@@ -250,12 +250,13 @@ test("commitInput: ignores caller-provided limit when checking matches (regressi
 
 test("commitInput: ticker-prefix-and-name-prefix overlap forces selection (regression for Codex P2)", () => {
   const { commitInput } = loadTsModule("ticker-search.ts");
-  // "am" is a prefix of AMZN ticker AND a substring of "Amazon.com Inc." name.
+  // "ama" is a prefix of AMZN ticker AND a prefix of "Amazon.com Inc." name.
   // matchOne returns ticker match early, hiding the name. commit must scan name independently.
+  // Use 3+ char query so the short-input free-pass doesn't apply.
   const SEED_AMZN = [
     { ticker: "AMZN", name: "Amazon.com Inc.", aliases: ["아마존"] },
   ];
-  const result = commitInput("am", { seed: SEED_AMZN });
+  const result = commitInput("ama", { seed: SEED_AMZN });
   assert.equal(result.status, "needs_selection");
 });
 
@@ -294,13 +295,15 @@ test("commitInput: korean substring match returns needs_selection (regression fo
   assert.equal(result2.status, "needs_selection");
 });
 
-test("commitInput: 1-char english tickers bypass name-prefix guard (regression for Codex P2)", () => {
+test("commitInput: short english tickers bypass name-prefix guard (regression for Codex P2)", () => {
   const { commitInput } = loadTsModule("ticker-search.ts");
-  // "A" (Agilent), "T" (AT&T), "C" (Citigroup) are 1-char real tickers.
-  // Most alphabet letters prefix-match some seed name; guard must skip 1-char.
+  // 1-2 char real US tickers: A (Agilent), T (AT&T), C (Citigroup), BA (Boeing), MS (Morgan).
+  // Almost every letter pair prefix-matches some seed company name, so the guard skips
+  // queries shorter than 3 chars to preserve free-form short-ticker entry.
   assert.deepEqual(commitInput("A", { seed: SEED }), { status: "ok", ticker: "A" });
   assert.deepEqual(commitInput("T", { seed: SEED }), { status: "ok", ticker: "T" });
-  // 2+ char prefix still forces selection
-  const r = commitInput("ap", { seed: SEED });
+  assert.deepEqual(commitInput("BA", { seed: SEED }), { status: "ok", ticker: "BA" });
+  // 3+ char prefix still forces selection
+  const r = commitInput("app", { seed: SEED });
   assert.equal(r.status, "needs_selection");
 });
