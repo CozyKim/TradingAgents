@@ -1,4 +1,3 @@
-import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 export function MetricCard({
@@ -13,20 +12,29 @@ export function MetricCard({
   tone?: "neutral" | "pos" | "neg";
 }) {
   const toneCls =
-    tone === "pos" ? "text-pos" : tone === "neg" ? "text-neg" : "text-text-1";
+    tone === "pos"
+      ? "text-signal-buy"
+      : tone === "neg"
+        ? "text-signal-sell"
+        : "text-text-1";
   return (
-    <Card>
-      <CardContent className="py-4">
-        <div className="text-2xs uppercase tracking-widest text-text-3">
-          {label}
-        </div>
-        <div className={cn("font-mono text-xl tabular-nums mt-1", toneCls)}>
-          {value}
-        </div>
-        {delta && (
-          <div className="text-xs text-text-3 mt-1 font-mono">{delta}</div>
+    <div className="rounded-2xl bg-bg-1 px-5 py-5 shadow-card">
+      <div className="text-[13px] font-semibold tracking-[-0.01em] text-text-3">
+        {label}
+      </div>
+      <div
+        className={cn(
+          "font-num mt-1 text-[26px] font-extrabold leading-tight tracking-[-0.03em]",
+          toneCls,
         )}
-      </CardContent>
-    </Card>
+      >
+        {value}
+      </div>
+      {delta && (
+        <div className="font-num mt-1 text-[12.5px] tracking-[-0.01em] text-text-3">
+          {delta}
+        </div>
+      )}
+    </div>
   );
 }

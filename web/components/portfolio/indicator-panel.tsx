@@ -17,18 +17,20 @@ import { CHART_CHROME, INDICATOR_COLORS } from "./indicator-colors";
 const TOOLTIP_STYLE = {
   background: CHART_CHROME.tooltipBg,
   border: `1px solid ${CHART_CHROME.tooltipBorder}`,
-  borderRadius: 6,
+  borderRadius: 12,
   fontSize: 12,
-  padding: "6px 8px",
+  padding: "8px 12px",
+  boxShadow:
+    "0 8px 24px -4px rgba(17, 24, 28, 0.12), 0 2px 6px 0 rgba(17, 24, 28, 0.06)",
 };
 
 const TOOLTIP_LABEL_STYLE = {
   color: CHART_CHROME.tooltipLabel,
   fontFamily:
-    "'JetBrains Mono', 'SF Mono', Consolas, monospace",
-  fontSize: 10,
-  letterSpacing: "0.05em",
-  textTransform: "uppercase" as const,
+    "'Pretendard Variable', 'Pretendard', system-ui, sans-serif",
+  fontSize: 11,
+  fontWeight: 600 as const,
+  letterSpacing: "-0.01em",
 };
 
 const fmtPct = (v: number | string | null | undefined) =>
@@ -65,7 +67,7 @@ export function RsiPanel({
         cursor={{ stroke: CHART_CHROME.axis, strokeDasharray: "3 3" }}
         contentStyle={TOOLTIP_STYLE}
         labelStyle={TOOLTIP_LABEL_STYLE}
-        itemStyle={{ color: "#e8e8ea", fontFamily: "'JetBrains Mono', monospace" }}
+        itemStyle={{ color: "#191F28", fontFamily: "'Pretendard Variable', 'Pretendard', system-ui, sans-serif" }}
         formatter={(value: number | string, name: string) => [fmtPct(value), name]}
       />
       <Line
@@ -121,7 +123,7 @@ export function StochPanel({
         cursor={{ stroke: CHART_CHROME.axis, strokeDasharray: "3 3" }}
         contentStyle={TOOLTIP_STYLE}
         labelStyle={TOOLTIP_LABEL_STYLE}
-        itemStyle={{ color: "#e8e8ea", fontFamily: "'JetBrains Mono', monospace" }}
+        itemStyle={{ color: "#191F28", fontFamily: "'Pretendard Variable', 'Pretendard', system-ui, sans-serif" }}
         formatter={(value: number | string, name: string) => [fmtPct(value), name]}
       />
       <Line

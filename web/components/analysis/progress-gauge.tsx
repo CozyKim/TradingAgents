@@ -2,15 +2,18 @@ export function ProgressGauge({ step, total }: { step: number; total: number }) 
   const pct = total > 0 ? Math.min(100, Math.round((step / total) * 100)) : 0;
   return (
     <div>
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-2xs uppercase tracking-widest text-text-3">Progress</span>
-        <span className="text-2xs font-num text-text-2">
-          {step}/{total || "?"} · {pct}%
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-[12px] font-semibold tracking-[-0.01em] text-text-3">
+          진행률
+        </span>
+        <span className="font-num text-[12.5px] font-bold tracking-[-0.01em] text-text-1">
+          {step}/{total || "?"}
+          <span className="ml-1 text-text-3">· {pct}%</span>
         </span>
       </div>
-      <div className="h-1.5 rounded-full bg-bg-2 overflow-hidden">
+      <div className="h-2 overflow-hidden rounded-full bg-bg-0">
         <div
-          className="h-full bg-accent transition-all duration-300"
+          className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out"
           style={{ width: `${pct}%` }}
         />
       </div>

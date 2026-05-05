@@ -1,14 +1,45 @@
 import { MarkdownText, type TextRenderMode } from "@/components/analysis/markdown-text";
 import { cn } from "@/lib/utils";
 
-const ROLE_STYLES: Record<string, string> = {
-  market: "border-l-accent",
-  social: "border-l-accent",
-  news: "border-l-accent",
-  fundamentals: "border-l-accent",
-  research: "border-l-signal-buy",
-  trader: "border-l-signal-hold",
-  risk: "border-l-signal-sell",
+const ROLE_STYLES: Record<string, { ring: string; chip: string }> = {
+  market: {
+    ring: "ring-accent/30",
+    chip: "bg-accent-muted text-accent",
+  },
+  social: {
+    ring: "ring-accent/30",
+    chip: "bg-accent-muted text-accent",
+  },
+  news: {
+    ring: "ring-accent/30",
+    chip: "bg-accent-muted text-accent",
+  },
+  fundamentals: {
+    ring: "ring-accent/30",
+    chip: "bg-accent-muted text-accent",
+  },
+  research: {
+    ring: "ring-signal-buy/25",
+    chip: "bg-signal-buy/10 text-signal-buy",
+  },
+  trader: {
+    ring: "ring-text-3/30",
+    chip: "bg-text-3/15 text-text-2",
+  },
+  risk: {
+    ring: "ring-signal-sell/25",
+    chip: "bg-signal-sell/10 text-signal-sell",
+  },
+};
+
+const ROLE_LABEL: Record<string, string> = {
+  market: "시장",
+  social: "소셜",
+  news: "뉴스",
+  fundamentals: "펀더멘털",
+  research: "리서치",
+  trader: "트레이더",
+  risk: "리스크",
 };
 
 export function AgentCard({
@@ -22,28 +53,41 @@ export function AgentCard({
   ts?: string | number;
   renderMode?: TextRenderMode;
 }) {
+  const style = ROLE_STYLES[role] ?? {
+    ring: "ring-text-3/20",
+    chip: "bg-bg-2 text-text-3",
+  };
   return (
     <div
       className={cn(
-        "border border-border-1 border-l-2 bg-bg-1 rounded-md px-3 py-2",
-        ROLE_STYLES[role] ?? "border-l-text-3",
+        "rounded-2xl bg-bg-1 px-4 py-3.5 shadow-card ring-1 ring-inset",
+        style.ring,
       )}
     >
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-2xs uppercase tracking-widest text-text-3 font-medium">
-          {role}
+      <div className="mb-2 flex items-center justify-between">
+        <span
+          className={cn(
+            "inline-flex items-center rounded-full px-2 py-0.5 text-[11.5px] font-bold tracking-[-0.01em]",
+            style.chip,
+          )}
+        >
+          {ROLE_LABEL[role] ?? role}
         </span>
-        {ts && <span className="text-2xs font-num text-text-3">{ts}</span>}
+        {ts && (
+          <span className="font-num text-[11px] tracking-[-0.01em] text-text-3">
+            {ts}
+          </span>
+        )}
       </div>
       {renderMode === "plain" ? (
         <MarkdownText
-          className="text-xs text-text-2 leading-snug"
+          className="text-[13.5px] leading-relaxed text-text-2"
           mode="plain"
           text={text}
         />
       ) : (
         <MarkdownText
-          className="text-xs text-text-2 leading-snug [&_p]:leading-snug"
+          className="text-[13.5px] leading-relaxed text-text-2 [&_p]:leading-relaxed"
           text={text}
         />
       )}

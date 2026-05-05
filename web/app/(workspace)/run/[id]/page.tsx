@@ -11,6 +11,22 @@ import { useCancelRun, useRun } from "@/hooks/use-runs";
 import { useRunStream } from "@/hooks/use-run-stream";
 import type { Decision as RunDecision } from "@/lib/runs";
 
+const STATUS_LABEL: Record<string, string> = {
+  running: "분석 중",
+  completed: "완료",
+  failed: "실패",
+  cancelled: "취소됨",
+  pending: "대기 중",
+};
+
+const STATUS_TONE: Record<string, string> = {
+  running: "bg-accent-muted text-accent",
+  completed: "bg-signal-buy/10 text-signal-buy",
+  failed: "bg-signal-sell/10 text-signal-sell",
+  cancelled: "bg-text-3/15 text-text-2",
+  pending: "bg-bg-2 text-text-3",
+};
+
 export default function RunLivePage() {
   const params = useParams<{ id: string }>();
   const runId = params.id;
@@ -22,37 +38,49 @@ export default function RunLivePage() {
     detail.data?.status === "completed" ||
     detail.data?.status === "failed" ||
     detail.data?.status === "cancelled";
-  // Always open SSE keyed by runId. The backend immediately replays buffered
-  // history (and emits `close` for already-terminal runs), so this is safe
-  // regardless of cache state and avoids races where a stale cached
-  // terminal status would prevent the stream from ever starting.
   const stream = useRunStream(runId);
   const cancel = useCancelRun();
 
   const isRunning = detail.data?.status === "running" && !stream.done;
   const streamDone = stream.done || terminalStatus;
+  const status = detail.data?.status ?? "pending";
 
   return (
-    <div className="px-4 md:px-6 py-6 md:py-8 max-w-screen-xl mx-auto grid gap-4">
-      <div className="flex items-baseline justify-between">
+    <div className="mx-auto grid w-full max-w-screen-xl gap-4 px-4 py-5 md:px-8 md:py-8">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-text-1">
-            <span className="font-num">{detail.data?.ticker ?? "…"}</span>{" "}
-            <span className="text-text-3 text-sm">
+          <div className="flex items-center gap-2">
+            <h1 className="font-num text-[26px] font-extrabold leading-none tracking-[-0.03em] text-text-1 md:text-[30px]">
+              {detail.data?.ticker ?? "…"}
+            </h1>
+            <span className="text-[14px] font-semibold tracking-[-0.01em] text-text-3">
               {detail.data?.analysis_date}
             </span>
-          </h1>
-          <p className="text-xs text-text-3 mt-1">
-            {detail.data?.status ?? "loading"} · run {runId.slice(0, 8)}
-          </p>
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11.5px] font-bold ${
+                STATUS_TONE[status] ?? STATUS_TONE.pending
+              }`}
+            >
+              {status === "running" && (
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+              )}
+              {STATUS_LABEL[status] ?? status}
+            </span>
+            <span className="font-num text-[11.5px] tracking-[-0.01em] text-text-3">
+              run · {runId.slice(0, 8)}
+            </span>
+          </div>
         </div>
         {isRunning && (
           <Button
             variant="outline"
+            size="sm"
             onClick={() => cancel.mutate(runId)}
             disabled={cancel.isPending}
           >
-            Cancel
+            취소
           </Button>
         )}
       </div>
@@ -60,28 +88,34 @@ export default function RunLivePage() {
       <div className="grid gap-4 md:grid-cols-[1fr_2fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Status</CardTitle>
+            <CardTitle>진행 상태</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3">
             <ProgressGauge step={stream.step} total={stream.total} />
             {stream.error && (
-              <p className="text-xs text-signal-sell">{stream.error}</p>
+              <p className="text-[12.5px] font-semibold text-signal-sell">
+                {stream.error}
+              </p>
             )}
             {detail.data?.error && (
-              <p className="text-xs text-signal-sell">{detail.data.error}</p>
+              <p className="text-[12.5px] font-semibold text-signal-sell">
+                {detail.data.error}
+              </p>
             )}
             {(stream.cancelled || detail.data?.status === "cancelled") && (
-              <p className="text-xs text-signal-hold">Cancelled</p>
+              <p className="text-[12.5px] font-semibold text-text-3">
+                분석이 취소되었습니다.
+              </p>
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-3">
-            <CardTitle>Agent stream</CardTitle>
+            <CardTitle>에이전트 스트림</CardTitle>
             <select
-              aria-label="Agent stream view format"
-              className="h-8 rounded-md border border-border-1 bg-bg-1 px-2 text-xs text-text-2 outline-none focus:border-accent"
+              aria-label="에이전트 스트림 보기 형식"
+              className="h-9 rounded-lg bg-bg-2 px-3 text-[12.5px] font-semibold text-text-2 ring-1 ring-inset ring-transparent transition-colors focus:bg-bg-1 focus:outline-none focus:ring-accent/40"
               value={streamRenderMode}
               onChange={(event) =>
                 setStreamRenderMode(
@@ -89,16 +123,18 @@ export default function RunLivePage() {
                 )
               }
             >
-              <option value="markdown">Markdown</option>
-              <option value="plain">Plain</option>
+              <option value="markdown">마크다운</option>
+              <option value="plain">일반 텍스트</option>
             </select>
           </CardHeader>
-          <CardContent className="grid gap-2 max-h-[60vh] overflow-y-auto">
+          <CardContent className="grid max-h-[60vh] gap-2.5 overflow-y-auto">
             {stream.messages.length === 0 &&
               (terminalStatus ? (
-                <p className="text-xs text-text-3">Analysis finished.</p>
+                <p className="text-[13px] text-text-3">분석이 완료되었어요.</p>
               ) : (
-                <p className="text-xs text-text-3">Waiting for agents…</p>
+                <p className="text-[13px] text-text-3">
+                  에이전트가 작업을 시작하기를 기다리는 중…
+                </p>
               ))}
             {stream.messages.map((m) => (
               <AgentCard

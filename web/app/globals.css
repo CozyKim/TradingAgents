@@ -1,24 +1,76 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: light;
+    --tw-ring-color: #3182F6;
   }
   html, body {
-    background-color: #0a0a0b;
-    color: #e8e8ea;
-    font-family: Inter, system-ui, -apple-system, sans-serif;
+    background-color: #F2F4F6;
+    color: #191F28;
+    font-family:
+      "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont,
+      system-ui, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    font-feature-settings: "ss01", "ss02", "tnum";
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.01em;
   }
-  /* numbers + tickers */
+  body {
+    text-rendering: optimizeLegibility;
+  }
+  /* Tabular numerals for prices and metrics */
   .font-num {
-    font-family: "JetBrains Mono", "SF Mono", Consolas, monospace;
     font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    letter-spacing: -0.02em;
   }
-  /* signal badges */
-  .badge-buy { @apply bg-signal-buy/15 text-signal-buy; }
-  .badge-sell { @apply bg-signal-sell/15 text-signal-sell; }
-  .badge-hold { @apply bg-signal-hold/15 text-signal-hold; }
+  /* Display headings — Toss-style heavy weight, tight tracking */
+  .display {
+    font-weight: 800;
+    letter-spacing: -0.035em;
+  }
+  /* Signal pills (KR-market convention: buy=red, sell=blue) */
+  .badge-buy { @apply bg-signal-buy/10 text-signal-buy; }
+  .badge-sell { @apply bg-signal-sell/10 text-signal-sell; }
+  .badge-hold { @apply bg-text-3/15 text-text-2; }
+
+  /* Inputs: native date/number control glyphs in light theme */
+  input::-webkit-calendar-picker-indicator {
+    filter: none;
+    opacity: 0.55;
+  }
+  input::-webkit-calendar-picker-indicator:hover {
+    opacity: 0.9;
+  }
+
+  /* Selection color = Toss blue tint */
+  ::selection {
+    background-color: rgba(49, 130, 246, 0.18);
+    color: #191F28;
+  }
+
+  /* Scrollbars — slim, neutral */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: #D1D6DB;
+    border-radius: 999px;
+    border: 2px solid #F2F4F6;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: #B0B8C1; }
+}
+
+@layer components {
+  /* Toss-style pressable surface — used for cards/list rows */
+  .toss-press {
+    @apply transition-[transform,background-color] duration-100;
+  }
+  .toss-press:active {
+    transform: scale(0.985);
+  }
 }

@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { Holding } from "@/lib/holdings";
 import { RunListItem } from "@/lib/runs";
 import { SignalBadge } from "@/components/shared/signal-badge";
@@ -15,52 +16,60 @@ export function PortfolioSignals({
   if (holdings.length === 0)
     return (
       <div className="flex flex-col items-start gap-3 py-2">
-        <p className="text-sm text-text-2">
-          You don&apos;t have any holdings yet.
+        <p className="text-[14px] text-text-2">
+          아직 보유 종목이 없어요.
         </p>
         <Link
           href="/portfolio"
-          className="inline-flex items-center gap-1 rounded-md border border-border-1 bg-bg-2 px-3 py-1.5 text-xs text-text-1 hover:bg-bg-1 hover:border-border-2"
+          className="inline-flex h-10 items-center gap-1 rounded-xl bg-accent-muted px-4 text-[13px] font-bold text-accent hover:bg-[#D6E7FD]"
         >
-          + Add your first holding
+          + 첫 종목 추가하기
         </Link>
       </div>
     );
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-2xs uppercase tracking-wider text-text-3 border-b border-border-1">
-            <th className="text-left py-2">Ticker</th>
-            <th>Latest decision</th>
-            <th>Confidence</th>
-            <th>When</th>
-          </tr>
-        </thead>
-        <tbody>
-          {holdings.map((h) => {
-            const r = latestByTicker[h.ticker];
-            return (
-              <tr key={h.id} className="border-b border-border-1 hover:bg-bg-2">
-                <td className="py-2 font-mono">
-                  <Link className="hover:underline" href={`/portfolio/${h.ticker}`}>
+    <ul className="-mx-2 flex flex-col">
+      {holdings.map((h) => {
+        const r = latestByTicker[h.ticker];
+        return (
+          <li key={h.id}>
+            <Link
+              href={`/portfolio/${h.ticker}`}
+              className="toss-press flex items-center gap-3 rounded-xl px-2 py-3 hover:bg-bg-2"
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-bg-2 text-[12px] font-extrabold tracking-[-0.04em] text-text-1">
+                {h.ticker.slice(0, 2)}
+              </div>
+              <div className="flex flex-1 flex-col">
+                <div className="flex items-center gap-2">
+                  <span className="text-[15px] font-bold tracking-[-0.02em] text-text-1">
                     {h.ticker}
-                  </Link>
-                </td>
-                <td>
-                  {r?.decision ? <SignalBadge decision={r.decision} /> : "—"}
-                </td>
-                <td className="font-mono tabular-nums">
-                  {r?.confidence != null ? r.confidence.toFixed(2) : "—"}
-                </td>
-                <td className="text-xs text-text-3">
-                  {formatKST(r?.created_at)}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+                  </span>
+                  {r?.decision && <SignalBadge decision={r.decision} />}
+                </div>
+                <div className="font-num text-[12.5px] text-text-3">
+                  {r?.created_at ? formatKST(r.created_at) : "분석 기록 없음"}
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                {r?.confidence != null && (
+                  <span className="font-num text-[14px] font-bold tracking-[-0.02em] text-text-1">
+                    {(r.confidence * 100).toFixed(0)}
+                    <span className="text-[11px] font-semibold text-text-3">
+                      %
+                    </span>
+                  </span>
+                )}
+                <ChevronRight
+                  className="h-4 w-4 text-text-3"
+                  aria-hidden
+                  strokeWidth={2.4}
+                />
+              </div>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

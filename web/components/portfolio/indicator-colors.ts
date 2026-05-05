@@ -1,29 +1,32 @@
+// Light-theme palette tuned for Toss-style charts.
+// Foreground lines stay saturated against the soft-gray surface.
 export const INDICATOR_COLORS = {
-  price: "#4f8cff",
-  sma: "#fbbf24",
-  ema: "#22d3ee",
-  bbMid: "#a0a0a8",
-  bbBand: "#5a5a64",
-  avgCost: "#a0a0a8",
-  rsi: "#a78bfa",
-  stochK: "#34d399",
-  stochD: "#f87171",
-  threshold: "#3a3a42",
+  price: "#3182F6", // Toss blue
+  sma: "#F59E0B",
+  ema: "#06B6D4",
+  bbMid: "#8B95A1",
+  bbBand: "#C0C8CF",
+  avgCost: "#8B95A1",
+  rsi: "#7C3AED",
+  stochK: "#F04452", // KR up = red
+  stochD: "#1B64DA", // KR down = blue
+  threshold: "#D1D6DB",
 } as const;
 
-// Chart chrome (axes, ticks, tooltip) — synced with the design system text/border tokens.
+// Chart chrome (axes, ticks, tooltip) — synced with light-mode tokens.
 export const CHART_CHROME = {
-  axis: "#8a8a93",
-  tick: "#8a8a93",
-  tooltipBg: "#111114",
-  tooltipBorder: "#2d2d34",
-  tooltipLabel: "#a0a0a8",
+  axis: "#C0C8CF",
+  tick: "#8B95A1",
+  tooltipBg: "#FFFFFF",
+  tooltipBorder: "#EAECEF",
+  tooltipLabel: "#4E5968",
 } as const;
 
+// KR-market signal markers: buy/up = red, sell/down = blue.
 export const SIGNAL_MARKER = {
-  BUY: { color: "#34d399", shape: "▲" },
-  OVERWEIGHT: { color: "#34d399", shape: "▲" },
-  SELL: { color: "#f87171", shape: "▼" },
-  UNDERWEIGHT: { color: "#f87171", shape: "▼" },
-  HOLD: { color: "#fbbf24", shape: "●" },
+  BUY: { color: "#F04452", shape: "▲" },
+  OVERWEIGHT: { color: "#F04452", shape: "▲" },
+  SELL: { color: "#1B64DA", shape: "▼" },
+  UNDERWEIGHT: { color: "#1B64DA", shape: "▼" },
+  HOLD: { color: "#8B95A1", shape: "●" },
 } as const;
