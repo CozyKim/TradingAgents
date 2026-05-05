@@ -93,12 +93,14 @@ export function ScheduleForm() {
             ))}
           </div>
         ) : null}
+        {/* key를 칩 개수로 두어 칩 추가 시마다 remount → 내부 query/error/highlight를
+            완전히 리셋. setCustomValidity의 query!=value 체크도 매 remount 시점에서
+            value=""(=새 마운트의 prop)와 query=""(초기 state)이 일치해 통과한다. */}
         <TickerCombobox
+          key={`ticker-input-${tickers.length}`}
           id="tickers"
           value={tickerDraft}
           onChange={(t) => {
-            // 확정된 티커가 들어오면 즉시 칩으로 추가하고 입력란 비움.
-            // 빈 값(취소)은 무시.
             if (t) addTicker(t);
             else setTickerDraft("");
           }}

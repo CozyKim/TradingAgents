@@ -54,7 +54,10 @@ export function TickerCombobox({
     el.setCustomValidity(message);
   }, [query, value, error, required]);
 
-  // 부모가 value를 외부에서 바꾼 경우(예: form reset) query 동기화
+  // 부모가 value를 외부에서 바꾼 경우(예: form reset) query 동기화.
+  // 포커스 중이면 사용자가 입력하던 query를 보존(parent의 value 변경은 우리가 onChange로
+  // 알린 결과인 경우가 대부분이라 query는 이미 일치). 외부에서 강제로 비우려면 부모가
+  // key prop으로 컴포넌트를 remount하면 된다.
   React.useEffect(() => {
     if (value !== query && document.activeElement?.id !== id) {
       setQuery(value);
