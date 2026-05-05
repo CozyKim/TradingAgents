@@ -74,7 +74,8 @@ export function TickerCombobox({
       setQuery(""); // 화면상 공백을 비워 부모 value(빈 문자열)와 일치시킨다
       setError(null);
       setOpen(false);
-      setValid(true);
+      // required 필드의 빈 값은 invalid로 보고. 그렇지 않으면 빈 값 그대로 제출 가능.
+      setValid(!required);
       return true;
     }
     if (result.status === "needs_selection") {
