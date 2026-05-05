@@ -106,3 +106,61 @@ test("searchTickers: prioritizes exact > prefix > substring", () => {
   // 정확일치 결과의 score가 prefix 결과 score보다 큼
   assert.ok(exactOut[0].score > prefixOut[0].score);
 });
+
+test("commitInput: empty input returns empty status", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  assert.deepEqual(commitInput("", { seed: SEED }), { status: "empty" });
+  assert.deepEqual(commitInput("   ", { seed: SEED }), { status: "empty" });
+});
+
+test("commitInput: english ticker pattern accepted", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  assert.deepEqual(commitInput("MSTR", { seed: SEED }), { status: "ok", ticker: "MSTR" });
+  assert.deepEqual(commitInput("mstr", { seed: SEED }), { status: "ok", ticker: "MSTR" });
+});
+
+test("commitInput: dot/hyphen tickers accepted", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  assert.deepEqual(commitInput("BRK.B", { seed: SEED }), { status: "ok", ticker: "BRK.B" });
+  assert.deepEqual(commitInput("BF-B", { seed: SEED }), { status: "ok", ticker: "BF-B" });
+});
+
+test("commitInput: korean exact alias auto-resolves to ticker", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  assert.deepEqual(commitInput("알파벳A", { seed: SEED }), { status: "ok", ticker: "GOOGL" });
+  assert.deepEqual(commitInput("애플", { seed: SEED }), { status: "ok", ticker: "AAPL" });
+});
+
+test("commitInput: korean ambiguous alias requires user selection", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  // "구글" matches both GOOGL and GOOG → cannot auto-commit
+  const result = commitInput("구글", { seed: SEED });
+  assert.equal(result.status, "needs_selection");
+});
+
+test("commitInput: korean partial input is invalid", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  // "알파" matches by prefix but is not exact alias → invalid
+  const result = commitInput("알파", { seed: SEED });
+  assert.equal(result.status, "needs_selection");
+});
+
+test("commitInput: korean with no match is invalid", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  const result = commitInput("존재하지않는한글", { seed: SEED });
+  assert.equal(result.status, "invalid");
+  assert.equal(result.reason, "korean_no_match");
+});
+
+test("commitInput: english pattern violation is invalid", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  assert.equal(commitInput("MSTR!", { seed: SEED }).status, "invalid");
+  assert.equal(commitInput("MSTR ABC", { seed: SEED }).status, "invalid");
+  // 0 chars 정확히 한 글자 영문은 패턴 미달 (16자 초과도 미달)
+  assert.equal(commitInput("ABCDEFGHIJKLMNOPQ", { seed: SEED }).status, "invalid");
+});
+
+test("commitInput: mixed korean+english is invalid", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  assert.equal(commitInput("알파벳GOOGL", { seed: SEED }).status, "invalid");
+});

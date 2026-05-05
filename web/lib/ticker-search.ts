@@ -95,3 +95,49 @@ export function searchTickers(query: string, options: SearchOptions = {}): Searc
   results.sort((a, b) => b.score - a.score);
   return results.slice(0, limit);
 }
+
+export type CommitResult =
+  | { status: "ok"; ticker: string }
+  | { status: "empty" }
+  | { status: "needs_selection"; candidates: SearchResult[] }
+  | { status: "invalid"; reason: "english_pattern" | "korean_no_match" | "mixed" };
+
+const TICKER_PATTERN = /^[A-Z][A-Z0-9.\-]{0,15}$/;
+const HANGUL_RE = /[ㄱ-ㆎ가-힣]/;
+
+export function commitInput(raw: string, options: SearchOptions = {}): CommitResult {
+  const q = normalize(raw);
+  if (!q) return { status: "empty" };
+
+  const hasHangul = HANGUL_RE.test(q);
+  const upper = q.toUpperCase();
+  const hasNonHangulNonTickerChar = /[^A-Z0-9.\-ㄱ-ㆎ가-힣]/.test(upper);
+
+  // 공백/특수문자 포함 → 무효 (한글/영문 공통)
+  if (hasNonHangulNonTickerChar) {
+    return { status: "invalid", reason: hasHangul ? "korean_no_match" : "english_pattern" };
+  }
+
+  // 한글 포함 → 먼저 시드 정확일치 시도 (한글+영문 혼합 별칭 "알파벳A" 같은 케이스 포함)
+  if (hasHangul) {
+    const results = searchTickers(q, options);
+    const exactAliasHits = results.filter((r) => r.matched === "alias" && r.score >= SCORE.ALIAS_EXACT);
+    if (exactAliasHits.length === 1) {
+      return { status: "ok", ticker: exactAliasHits[0].ticker };
+    }
+    if (exactAliasHits.length > 1 || results.length > 0) {
+      return { status: "needs_selection", candidates: results };
+    }
+    // 시드에 매치 없음 → 한글+영문 혼합 여부 재판단
+    if (/[A-Z0-9]/.test(upper.replace(/[ㄱ-ㆎ가-힣]/g, ""))) {
+      return { status: "invalid", reason: "mixed" };
+    }
+    return { status: "invalid", reason: "korean_no_match" };
+  }
+
+  // 영문 → 패턴 검사 후 통과면 대문자 티커로 확정
+  if (TICKER_PATTERN.test(upper)) {
+    return { status: "ok", ticker: upper };
+  }
+  return { status: "invalid", reason: "english_pattern" };
+}
