@@ -14,6 +14,7 @@ import { PricePoint } from "@/lib/prices";
 import { bollinger, ema, sma } from "@/lib/indicators";
 import { ChartSettings } from "@/lib/chart-settings";
 import { CHART_CHROME, INDICATOR_COLORS, SIGNAL_MARKER } from "./indicator-colors";
+import { useCurrency, formatPrice, type CurrencyCtx } from "@/lib/currency";
 
 export interface SignalMarker {
   date: string;
@@ -21,13 +22,12 @@ export interface SignalMarker {
   close: number;
 }
 
-const fmtPrice = (n: number | null | undefined) =>
-  n == null || !Number.isFinite(n)
-    ? "—"
-    : n.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
+function fmtPriceCtx(
+  n: number | null | undefined,
+  ctx: Pick<CurrencyCtx, "currency" | "fxRate">,
+): string {
+  return formatPrice(n, ctx);
+}
 
 const SERIES_LABELS: Record<string, string> = {
   close: "Close",
@@ -58,11 +58,13 @@ function PriceTooltip({
   payload,
   label,
   signalsByDate,
+  ctx,
 }: {
   active?: boolean;
   payload?: TooltipPayloadEntry[];
   label?: string | number;
   signalsByDate: Map<string, SignalMarker>;
+  ctx: Pick<CurrencyCtx, "currency" | "fxRate">;
 }) {
   if (!active || !payload?.length) return null;
   const dateKey = typeof label === "string" ? label : String(label ?? "");
@@ -92,7 +94,7 @@ function PriceTooltip({
                 />
                 {SERIES_LABELS[key] ?? key}
               </span>
-              <span className="tabular-nums text-text-1">{fmtPrice(value)}</span>
+              <span className="tabular-nums text-text-1">{fmtPriceCtx(value, ctx)}</span>
             </li>
           );
         })}
@@ -163,6 +165,7 @@ export function PriceChart({
   overlays?: ChartSettings["overlays"];
   showXAxis?: boolean;
 }) {
+  const ctx = useCurrency();
   const data = useMemo(() => {
     const closes = points.map((p) => p.close);
     const smaSeries =
@@ -220,15 +223,13 @@ export function PriceChart({
             width={48}
             domain={["auto", "auto"]}
             tickFormatter={(v) =>
-              typeof v === "number"
-                ? v.toLocaleString(undefined, { maximumFractionDigits: 2 })
-                : String(v)
+              typeof v === "number" ? formatPrice(v, ctx, { usdDecimals: 0 }) : String(v)
             }
           />
           <Tooltip
             cursor={{ stroke: CHART_CHROME.axis, strokeDasharray: "3 3" }}
             content={
-              <PriceTooltip signalsByDate={signalsByDate} />
+              <PriceTooltip signalsByDate={signalsByDate} ctx={ctx} />
             }
           />
           <Line
@@ -307,7 +308,7 @@ export function PriceChart({
               stroke={INDICATOR_COLORS.avgCost}
               strokeDasharray="4 3"
               label={{
-                value: `Avg ${fmtPrice(avgCost)}`,
+                value: `Avg ${fmtPriceCtx(avgCost, ctx)}`,
                 position: "insideTopRight",
                 fill: INDICATOR_COLORS.avgCost,
                 fontSize: 10,
@@ -323,7 +324,7 @@ export function PriceChart({
                 y={s.close}
                 r={5}
                 fill={meta.color}
-                stroke="#0a0a0b"
+                stroke="#FFFFFF"
                 strokeWidth={1.5}
                 ifOverflow="extendDomain"
               />
