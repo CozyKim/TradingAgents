@@ -157,6 +157,7 @@ export function TickerCombobox({
               setQuery(e.target.value);
               setError(null);
               setOpen(true);
+              setHighlight(-1); // query 변경 시 stale highlight 리셋(Enter 자동 선택 방지)
               setValid(false); // 사용자가 다시 타이핑 중 — 미확정
             }}
             onFocus={() => results.length > 0 && setOpen(true)}

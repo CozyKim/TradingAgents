@@ -159,13 +159,16 @@ export function commitInput(raw: string, options: SearchOptions = {}): CommitRes
   // 티커 prefix 매치만 있는 경우는 사용자가 티커 자체를 친 것으로 보고
   //   자유 입력을 보존한다 (예: "MS"는 MSFT의 prefix지만 Morgan Stanley의 실제 티커).
   //
-  // 시드를 직접 스캔: 같은 entry에서 ticker가 먼저 매치되더라도 name/alias 매치는
-  // 별도로 발견해야 한다 (matchOne은 ticker 매치 시 early-return하므로 의존하면 안 됨).
-  const hasNameOrAliasMatch = seed.some((entry) => {
-    if (entry.name.toLowerCase().includes(qLower)) return true;
-    return entry.aliases.some((a) => normalize(a).toLowerCase().includes(qLower));
+  // 시드를 직접 스캔: prefix 매치만 가드한다.
+  // - prefix 매치(예: "tesla" → "Tesla Inc." 시작): 사용자가 회사명으로 입력 → 선택 강제
+  // - substring 매치(예: "f" → "Netflix" 안에 'f'): 1글자 단어가 아무 회사명에나 걸리는
+  //   광범위 false-positive를 만들기 때문에 자유 입력을 막지 않는다. 드롭다운에는
+  //   substring 매치도 표시되므로 사용자가 원하면 선택 가능.
+  const hasNamePrefixMatch = seed.some((entry) => {
+    if (entry.name.toLowerCase().startsWith(qLower)) return true;
+    return entry.aliases.some((a) => normalize(a).toLowerCase().startsWith(qLower));
   });
-  if (hasNameOrAliasMatch) {
+  if (hasNamePrefixMatch) {
     const candidates = searchTickers(q, { ...options, limit: Number.POSITIVE_INFINITY });
     return { status: "needs_selection", candidates };
   }

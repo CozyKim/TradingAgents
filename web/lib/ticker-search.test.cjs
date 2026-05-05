@@ -257,3 +257,27 @@ test("commitInput: ticker-prefix-and-name-prefix overlap forces selection (regre
   const result = commitInput("am", { seed: SEED_AMZN });
   assert.equal(result.status, "needs_selection");
 });
+
+test("commitInput: short free-form ticker not blocked by mere name substring (regression for Codex P2)", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  // "F" (Ford) is a 1-char ticker. Many seed names contain 'f' as a letter
+  // (Microsoft, Netflix), but commit must allow it as free input since no
+  // name STARTS with "f".
+  const SEED_WITH_FS = [
+    { ticker: "MSFT", name: "Microsoft Corporation", aliases: ["마이크로소프트"] },
+    { ticker: "NFLX", name: "Netflix Inc.", aliases: ["넷플릭스"] },
+  ];
+  assert.deepEqual(commitInput("F", { seed: SEED_WITH_FS }), { status: "ok", ticker: "F" });
+  // "lab" is substring of "Alphabet" but no name starts with "lab" → free input ok
+  const SEED_ALPHA = [
+    { ticker: "GOOGL", name: "Alphabet Inc. Class A", aliases: ["알파벳"] },
+  ];
+  assert.deepEqual(commitInput("LAB", { seed: SEED_ALPHA }), { status: "ok", ticker: "LAB" });
+});
+
+test("commitInput: name PREFIX still forces selection", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  // Name starting with the query → must force selection
+  const result = commitInput("apple", { seed: SEED });
+  assert.equal(result.status, "needs_selection");
+});
