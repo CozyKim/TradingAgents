@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TickerCombobox } from "@/components/ui/ticker-combobox";
 import { useCreateRun } from "@/hooks/use-runs";
 import { Analyst, VALID_ANALYSTS } from "@/lib/runs";
 import { todayKST } from "@/lib/datetime";
@@ -48,12 +49,11 @@ export function RunForm() {
       <section className="rounded-2xl bg-bg-1 p-5 shadow-card">
         <div className="grid gap-2">
           <Label htmlFor="ticker">티커</Label>
-          <Input
+          <TickerCombobox
             id="ticker"
             value={ticker}
-            onChange={(e) => setTicker(e.target.value)}
-            placeholder="예: AAPL"
-            className="font-num text-[18px] font-bold uppercase tracking-[-0.02em]"
+            onChange={setTicker}
+            placeholder="예: AAPL 또는 애플"
             required
           />
         </div>

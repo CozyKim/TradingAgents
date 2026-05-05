@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TickerCombobox } from "@/components/ui/ticker-combobox";
 import { useCreateHolding } from "@/hooks/use-holdings";
 
 export function HoldingForm({ onCreated }: { onCreated?: () => void }) {
@@ -37,12 +38,12 @@ export function HoldingForm({ onCreated }: { onCreated?: () => void }) {
     <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
       <div>
         <Label htmlFor="ticker">Ticker</Label>
-        <Input
+        <TickerCombobox
           id="ticker"
           required
           value={ticker}
-          onChange={(e) => setTicker(e.target.value.toUpperCase())}
-          placeholder="AAPL"
+          onChange={setTicker}
+          placeholder="AAPL or 애플"
         />
       </div>
       <div>
