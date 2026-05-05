@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TickerCombobox } from "@/components/ui/ticker-combobox";
 import { useCreateRun } from "@/hooks/use-runs";
 import { Analyst, VALID_ANALYSTS } from "@/lib/runs";
 import { todayKST } from "@/lib/datetime";
@@ -45,12 +46,11 @@ export function RunForm() {
         <form onSubmit={onSubmit} className="grid gap-4">
           <div className="grid gap-1.5">
             <Label htmlFor="ticker">Ticker</Label>
-            <Input
+            <TickerCombobox
               id="ticker"
               value={ticker}
-              onChange={(e) => setTicker(e.target.value)}
-              placeholder="AAPL"
-              className="font-num uppercase"
+              onChange={setTicker}
+              placeholder="AAPL 또는 애플"
               required
             />
           </div>
