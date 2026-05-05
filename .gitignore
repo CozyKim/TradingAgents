@@ -228,3 +228,15 @@ __marimo__/
 
 # git worktrees
 .worktrees/
+
+# Claude harness local state (worktrees, transcripts)
+.claude/
+
+# Playwright MCP local artifacts
+.playwright-mcp/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Local design reference screenshots (kept out of source control)
+toss-login-*.png
