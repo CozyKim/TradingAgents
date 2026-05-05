@@ -173,7 +173,9 @@ export function commitInput(raw: string, options: SearchOptions = {}): CommitRes
   //   만들기 때문에 자유 입력을 막지 않는다. 드롭다운에는 substring도 표시.
   // - ticker prefix 매치(예: "MS" → MSFT prefix이지만 MS는 Morgan Stanley 실제 티커):
   //   자유 입력 보존.
-  const hasNamePrefixMatch = seed.some((entry) => {
+  // - 1글자 영문(예: "A"=Agilent, "T"=AT&T, "C"=Citigroup): 거의 모든 알파벳이 시드 회사명의
+  //   첫 글자라 가드를 건너뛴다. 사용자가 1글자 자유 티커를 의도적으로 입력한다고 본다.
+  const hasNamePrefixMatch = upper.length >= 2 && seed.some((entry) => {
     if (entry.name.toLowerCase().startsWith(qLower)) return true;
     return entry.aliases.some((a) => normalize(a).toLowerCase().startsWith(qLower));
   });

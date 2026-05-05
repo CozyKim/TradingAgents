@@ -231,19 +231,20 @@ test("commitInput: free-form english ticker passes only when seed has no match a
 
 test("commitInput: ignores caller-provided limit when checking matches (regression for Codex P2)", () => {
   const { commitInput } = loadTsModule("ticker-search.ts");
-  // With a wide seed, low-score name matches could be cut off by limit.
-  // commitInput must scan the full seed regardless of limit option.
+  // With a wide seed, lower-priority name-prefix matches could be cut off by
+  // a small limit. commitInput must scan the full seed regardless of limit.
+  // Use a 2+ char query so the 1-char free-pass doesn't apply.
   const WIDE_SEED = [
-    { ticker: "AA", name: "Alcoa Corporation", aliases: [] },
-    { ticker: "AAL", name: "American Airlines", aliases: [] },
-    { ticker: "AAP", name: "Advance Auto Parts", aliases: [] },
-    { ticker: "AAPL", name: "Apple Inc.", aliases: ["애플"] },
-    { ticker: "AAU", name: "Almaden Minerals", aliases: [] },
-    { ticker: "GOOGL", name: "Alphabet Inc.", aliases: ["알파벳"] }, // substring "a" via name
+    { ticker: "APL", name: "API Corp", aliases: [] },
+    { ticker: "APP", name: "App Lab", aliases: [] },
+    { ticker: "APT", name: "Apt Tech", aliases: [] },
+    { ticker: "APV", name: "Apv Group", aliases: [] },
+    { ticker: "APW", name: "Apw Holdings", aliases: [] },
+    { ticker: "AAPL", name: "Apple Inc.", aliases: [] }, // distinguishable name prefix
   ];
-  // Even when limit=2 would cut off Alphabet (substring score 300),
-  // commit must still see the name match and force selection.
-  const result = commitInput("a", { seed: WIDE_SEED, limit: 2 });
+  // Even when limit=2 truncates ranked candidates, the full-seed scan must
+  // detect Apple's "appl" name prefix and force selection.
+  const result = commitInput("appl", { seed: WIDE_SEED, limit: 2 });
   assert.equal(result.status, "needs_selection");
 });
 
@@ -291,4 +292,15 @@ test("commitInput: korean substring match returns needs_selection (regression fo
   // "벳" alone — same intent
   const result2 = commitInput("벳", { seed: SEED });
   assert.equal(result2.status, "needs_selection");
+});
+
+test("commitInput: 1-char english tickers bypass name-prefix guard (regression for Codex P2)", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  // "A" (Agilent), "T" (AT&T), "C" (Citigroup) are 1-char real tickers.
+  // Most alphabet letters prefix-match some seed name; guard must skip 1-char.
+  assert.deepEqual(commitInput("A", { seed: SEED }), { status: "ok", ticker: "A" });
+  assert.deepEqual(commitInput("T", { seed: SEED }), { status: "ok", ticker: "T" });
+  // 2+ char prefix still forces selection
+  const r = commitInput("ap", { seed: SEED });
+  assert.equal(r.status, "needs_selection");
 });
