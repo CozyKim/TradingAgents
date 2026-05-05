@@ -10,6 +10,7 @@ import { useRunList } from "@/hooks/use-runs";
 import { useSchedules } from "@/hooks/use-schedules";
 import { getPriceHistory } from "@/lib/prices";
 import { RunListItem } from "@/lib/runs";
+import { useCurrency, formatPrice } from "@/lib/currency";
 
 export default function DashboardPage() {
   const { data: holdings } = useHoldings();
@@ -77,13 +78,8 @@ export default function DashboardPage() {
 
   const runningRuns = (runs?.items ?? []).filter((r) => r.status === "running");
 
-  const fmtMoney = (n: number | null) =>
-    n == null
-      ? "—"
-      : n.toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        });
+  const ctx = useCurrency();
+  const fmtMoney = (n: number | null) => formatPrice(n, ctx);
 
   const pnlTone =
     totals.pnl == null ? "neutral" : totals.pnl >= 0 ? "pos" : "neg";
@@ -132,8 +128,7 @@ export default function DashboardPage() {
                         : "font-num text-[15px] font-bold text-text-2"
                   }
                 >
-                  {totals.pnl >= 0 ? "+" : ""}
-                  {totals.pnl.toFixed(2)}
+                  {formatPrice(totals.pnl, ctx, { signed: true })}
                 </span>
                 {totals.pnlPct != null && (
                   <span
@@ -226,11 +221,7 @@ export default function DashboardPage() {
         />
         <MetricCard
           label="평가 손익"
-          value={
-            totals.pnl == null
-              ? "—"
-              : `${totals.pnl >= 0 ? "+" : ""}${totals.pnl.toFixed(2)}`
-          }
+          value={formatPrice(totals.pnl, ctx, { signed: true })}
           delta={
             totals.pnlPct == null
               ? undefined
