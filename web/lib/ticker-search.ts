@@ -153,12 +153,14 @@ export function commitInput(raw: string, options: SearchOptions = {}): CommitRes
 
   // 2단계: 정확일치 없음 → 한글 포함 여부로 분기
 
-  // 2단계: 정확일치 없음 → 시드의 부분일치 결과를 우선 확인
-  // 시드가 "무언가" 알고 있으면(예: tesla → TSLA name match, TSL → TSLA prefix)
-  // 자유 입력으로 확정하지 말고 사용자가 선택하도록 강제한다.
-  // 이 검사는 한글/영문 모두 동일하게 적용해 자유입력 누수 경로를 단일화한다.
+  // 2단계: 정확일치 없음 → 시드의 부분일치를 확인
+  // 회사명/별칭 매치는 사용자가 이름으로 입력한 것이므로 반드시 선택을 강제한다
+  //   (예: "tesla" → TSLA name 매치, "알파" → GOOGL alias prefix).
+  // 티커 prefix 매치만 있는 경우는 사용자가 티커 자체를 친 것으로 보고
+  //   자유 입력을 보존한다 (예: "MS"는 MSFT의 prefix지만 Morgan Stanley의 실제 티커).
   const partialResults = searchTickers(q, options);
-  if (partialResults.length > 0) {
+  const nameOrAliasHits = partialResults.filter((r) => r.matched !== "ticker");
+  if (nameOrAliasHits.length > 0) {
     return { status: "needs_selection", candidates: partialResults };
   }
 

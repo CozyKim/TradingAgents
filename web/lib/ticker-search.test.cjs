@@ -209,11 +209,16 @@ test("commitInput: english company name partial match forces selection (regressi
   assert.equal(r2.status, "needs_selection");
 });
 
-test("commitInput: english ticker prefix forces selection", () => {
+test("commitInput: english ticker prefix preserves free-form input (regression for Codex P2)", () => {
   const { commitInput } = loadTsModule("ticker-search.ts");
-  // "tsl" is a prefix of TSLA → user must select instead of auto-confirming "TSL"
-  const result = commitInput("tsl", { seed: SEED });
-  assert.equal(result.status, "needs_selection");
+  // "MS" is a prefix of MSFT in seed but is also Morgan Stanley's real ticker.
+  // Ticker-prefix-only matches must not block free-form commit.
+  const SEED_WITH_PREFIX = [
+    { ticker: "MSFT", name: "Microsoft Corporation", aliases: ["마이크로소프트"] },
+  ];
+  assert.deepEqual(commitInput("MS", { seed: SEED_WITH_PREFIX }), { status: "ok", ticker: "MS" });
+  // "tsl" is a prefix of TSLA but should still commit as TSL since match is ticker-prefix only
+  assert.deepEqual(commitInput("tsl", { seed: SEED }), { status: "ok", ticker: "TSL" });
 });
 
 test("commitInput: free-form english ticker passes only when seed has no match at all", () => {
