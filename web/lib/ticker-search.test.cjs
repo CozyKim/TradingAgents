@@ -281,3 +281,14 @@ test("commitInput: name PREFIX still forces selection", () => {
   const result = commitInput("apple", { seed: SEED });
   assert.equal(result.status, "needs_selection");
 });
+
+test("commitInput: korean substring match returns needs_selection (regression for Codex P2)", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  // "벳A" is substring of "알파벳A" alias but not a prefix. Korean substring should
+  // surface candidates for selection rather than failing with korean_no_match.
+  const result = commitInput("벳A", { seed: SEED });
+  assert.equal(result.status, "needs_selection");
+  // "벳" alone — same intent
+  const result2 = commitInput("벳", { seed: SEED });
+  assert.equal(result2.status, "needs_selection");
+});

@@ -71,7 +71,9 @@ export function TickerCombobox({
     }
     if (result.status === "empty") {
       onChange("");
+      setQuery(""); // 화면상 공백을 비워 부모 value(빈 문자열)와 일치시킨다
       setError(null);
+      setOpen(false);
       setValid(true);
       return true;
     }
