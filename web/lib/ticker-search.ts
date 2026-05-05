@@ -155,15 +155,19 @@ export function commitInput(raw: string, options: SearchOptions = {}): CommitRes
 
   // 2단계: 정확일치 없음 → 시드의 부분일치를 확인
   // 회사명/별칭 매치는 사용자가 이름으로 입력한 것이므로 반드시 선택을 강제한다
-  //   (예: "tesla" → TSLA name 매치, "알파" → GOOGL alias prefix).
+  //   (예: "tesla" → TSLA name 매치, "am" → Amazon.com name 매치).
   // 티커 prefix 매치만 있는 경우는 사용자가 티커 자체를 친 것으로 보고
   //   자유 입력을 보존한다 (예: "MS"는 MSFT의 prefix지만 Morgan Stanley의 실제 티커).
   //
-  // limit 누수 방지: UI가 작은 limit를 넘겨도 commit 검증은 시드 전체를 본다.
-  const partialResults = searchTickers(q, { ...options, limit: Number.POSITIVE_INFINITY });
-  const nameOrAliasHits = partialResults.filter((r) => r.matched !== "ticker");
-  if (nameOrAliasHits.length > 0) {
-    return { status: "needs_selection", candidates: partialResults };
+  // 시드를 직접 스캔: 같은 entry에서 ticker가 먼저 매치되더라도 name/alias 매치는
+  // 별도로 발견해야 한다 (matchOne은 ticker 매치 시 early-return하므로 의존하면 안 됨).
+  const hasNameOrAliasMatch = seed.some((entry) => {
+    if (entry.name.toLowerCase().includes(qLower)) return true;
+    return entry.aliases.some((a) => normalize(a).toLowerCase().includes(qLower));
+  });
+  if (hasNameOrAliasMatch) {
+    const candidates = searchTickers(q, { ...options, limit: Number.POSITIVE_INFINITY });
+    return { status: "needs_selection", candidates };
   }
 
   // 3단계: 시드에 어떤 매치도 없음 → 자유 입력 평가

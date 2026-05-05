@@ -246,3 +246,14 @@ test("commitInput: ignores caller-provided limit when checking matches (regressi
   const result = commitInput("a", { seed: WIDE_SEED, limit: 2 });
   assert.equal(result.status, "needs_selection");
 });
+
+test("commitInput: ticker-prefix-and-name-prefix overlap forces selection (regression for Codex P2)", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  // "am" is a prefix of AMZN ticker AND a substring of "Amazon.com Inc." name.
+  // matchOne returns ticker match early, hiding the name. commit must scan name independently.
+  const SEED_AMZN = [
+    { ticker: "AMZN", name: "Amazon.com Inc.", aliases: ["아마존"] },
+  ];
+  const result = commitInput("am", { seed: SEED_AMZN });
+  assert.equal(result.status, "needs_selection");
+});
