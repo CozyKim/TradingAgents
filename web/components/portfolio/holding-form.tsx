@@ -58,7 +58,7 @@ export function HoldingForm({ onCreated }: { onCreated?: () => void }) {
         />
       </div>
       <div>
-        <Label htmlFor="avg">Avg cost</Label>
+        <Label htmlFor="avg">Avg cost (USD)</Label>
         <Input
           id="avg"
           type="number"
