@@ -130,8 +130,8 @@ def _persist_assistant(
     *,
     analysis_id: int,
     turn_id: str,
-    content_blocks: list[dict[str, Any]],
-    tool_calls: list[dict[str, Any]] | None,
+    content_blocks: list[Any],
+    tool_calls: list[Any] | None,
     model_id: str | None,
     cost_usd: float | None,
     partial: bool,
@@ -228,11 +228,11 @@ async def _execute_turn(*, run_id: str, analysis_id: int, turn_id: str) -> None:
     channel = chat_channel(run_id, turn_id)
     db = _session_factory()
     text_blocks: dict[int, str] = {}
-    tool_calls_emitted: dict[str, dict[str, Any]] = {}
+    tool_calls_emitted: dict[str, Any] = {}
     pending_tool_messages: list[ToolMessage] = []
     final_message: AIMessage | None = None
 
-    def _final_blocks() -> list[dict[str, Any]]:
+    def _final_blocks() -> list[Any]:
         if final_message is not None and isinstance(final_message.content, list):
             return final_message.content
         if text_blocks:
@@ -272,16 +272,17 @@ async def _execute_turn(*, run_id: str, analysis_id: int, turn_id: str) -> None:
                     if source == "model" and isinstance(last, AIMessage):
                         final_message = last
                         for tc in last.tool_calls or []:
-                            if tc["id"] not in tool_calls_emitted:
-                                tool_calls_emitted[tc["id"]] = tc
+                            tc_id = tc.get("id")
+                            if tc_id and tc_id not in tool_calls_emitted:
+                                tool_calls_emitted[tc_id] = tc
                                 bus.publish(
                                     channel,
                                     AnalysisEvent(
                                         type="tool_call",
                                         data={
-                                            "id": tc["id"],
-                                            "name": tc["name"],
-                                            "args": tc["args"],
+                                            "id": tc_id,
+                                            "name": tc.get("name", ""),
+                                            "args": tc.get("args", {}),
                                         },
                                     ),
                                 )

@@ -5,7 +5,7 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
-from langchain.messages import AIMessage, AIMessageChunk, ToolMessage
+from langchain.messages import AIMessageChunk
 
 from tradingagents_web.models import Analysis, ChatMessage
 from tradingagents_web.services.chat_runner import (
@@ -96,16 +96,13 @@ class _FakeAgent:
     def __init__(self, chunks):
         self._chunks = chunks
 
-    async def astream(self, *args, **kwargs):
+    async def astream(self, *_args, **_kwargs):
         for c in self._chunks:
             yield c
 
 
 def _make_session_factory(db_session):
     """테스트 세션을 반환하되 close()를 no-op으로 패치한 factory를 반환한다."""
-    from unittest.mock import patch
-
-    original_close = db_session.close
 
     def _no_close():
         pass  # 테스트 세션은 conftest가 관리하므로 닫지 않는다
@@ -148,7 +145,7 @@ async def test_execute_turn_runtime_error_persists_partial(db_session, monkeypat
     _add_user_msg(db_session, a.id, 0, "안녕")
 
     class _Boom:
-        async def astream(self, *args, **kwargs):
+        async def astream(self, *_args, **_kwargs):
             yield {"type": "messages", "data": (AIMessageChunk(content="중간"), {})}
             raise RuntimeError("provider down")
 
@@ -180,7 +177,7 @@ async def test_execute_turn_cancellation_persists_cancelled(db_session, monkeypa
     _add_user_msg(db_session, a.id, 0, "긴 질문")
 
     class _Slow:
-        async def astream(self, *args, **kwargs):
+        async def astream(self, *_args, **_kwargs):
             yield {"type": "messages", "data": (AIMessageChunk(content="짧은"), {})}
             await asyncio.sleep(10)
             yield None  # never reached
