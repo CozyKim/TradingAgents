@@ -120,17 +120,11 @@ VENDOR_METHODS = {
         "yfinance": get_yfinance_insider_transactions,
     },
     # social_data
-    # Wrapped via lambdas so module-level patches (e.g. unit-test mocks against
-    # `interface.get_social_sentiment_finnhub`) are honored at call time.
     "get_social_sentiment": {
-        "finnhub": lambda *args, **kwargs: get_social_sentiment_finnhub(
-            *args, **kwargs
-        ),
+        "finnhub": get_social_sentiment_finnhub,
     },
     "get_social_messages": {
-        "stocktwits": lambda *args, **kwargs: get_social_messages_stocktwits(
-            *args, **kwargs
-        ),
+        "stocktwits": get_social_messages_stocktwits,
     },
 }
 
