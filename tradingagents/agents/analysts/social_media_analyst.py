@@ -1,6 +1,13 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from tradingagents.agents.utils.agent_utils import build_instrument_context, get_language_instruction, get_news
-from tradingagents.dataflows.config import get_config
+
+from tradingagents.agents.utils.agent_utils import (
+    build_instrument_context,
+    get_language_instruction,
+)
+from tradingagents.agents.utils.social_data_tools import (
+    get_social_messages,
+    get_social_sentiment,
+)
 
 
 def create_social_media_analyst(llm):
@@ -8,13 +15,18 @@ def create_social_media_analyst(llm):
         current_date = state["trade_date"]
         instrument_context = build_instrument_context(state["company_of_interest"])
 
-        tools = [
-            get_news,
-        ]
+        tools = [get_social_sentiment, get_social_messages]
 
         system_message = (
-            "You are a social media and company specific news researcher/analyst tasked with analyzing social media posts, recent company news, and public sentiment for a specific company over the past week. You will be given a company's name your objective is to write a comprehensive long report detailing your analysis, insights, and implications for traders and investors on this company's current state after looking at social media and what people are saying about that company, analyzing sentiment data of what people feel each day about the company, and looking at recent company news. Use the get_news(query, start_date, end_date) tool to search for company-specific news and social media discussions. Try to look at all sources possible from social media to sentiment to news. Provide specific, actionable insights with supporting evidence to help traders make informed decisions."
-            + """ Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read."""
+            "You are a social media sentiment analyst. Use these tools:\n"
+            "- get_social_sentiment(ticker, start_date, end_date): aggregated bullish/"
+            "bearish scores and Reddit/Twitter mention trends for the date range.\n"
+            "- get_social_messages(ticker, limit): recent retail-investor commentary "
+            "from StockTwits.\n"
+            "Always pass the bare ticker symbol (e.g. 'AAPL'). Never pass free-form "
+            "queries. Synthesize sentiment direction, momentum shifts, notable retail "
+            "narratives, and any divergence between aggregate sentiment and individual "
+            "messages. Append a Markdown summary table at the end of the report."
             + get_language_instruction()
         )
 
@@ -45,7 +57,6 @@ def create_social_media_analyst(llm):
         result = chain.invoke(state["messages"])
 
         report = ""
-
         if len(result.tool_calls) == 0:
             report = result.content
 
