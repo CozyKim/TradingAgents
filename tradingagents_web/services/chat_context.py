@@ -3,7 +3,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from tradingagents_web.models import Analysis
+from langchain.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
+from sqlalchemy.orm import Session as OrmSession
+
+from tradingagents_web.models import Analysis, ChatMessage
 
 _REPORT_SECTIONS: list[tuple[str, str]] = [
     ("market_report", "📈 시장 분석"),
@@ -54,3 +57,59 @@ def build_system_prompt(analysis: Analysis) -> str:
         "## 분석 본문 (참고용 컨텍스트)\n"
         f"{body}\n"
     )
+
+
+
+def _to_lc_message(row: ChatMessage) -> AnyMessage:
+    """ChatMessage 행을 LangChain 메시지 객체로 변환.
+
+    Args:
+        row: ChatMessage 모델 인스턴스.
+
+    Returns:
+        역할에 따른 HumanMessage, AIMessage, 또는 ToolMessage.
+
+    Raises:
+        ValueError: 알 수 없는 role 값.
+    """
+    if row.role == "user":
+        return HumanMessage(content=row.content_blocks)
+    if row.role == "assistant":
+        return AIMessage(content=row.content_blocks, tool_calls=row.tool_calls or [])
+    if row.role == "tool":
+        return ToolMessage(
+            content=row.content_blocks,
+            tool_call_id=row.tool_call_id or "",
+            name=row.tool_name or "",
+        )
+    raise ValueError(f"unknown role: {row.role}")
+
+
+def build_message_history(
+    db: OrmSession,
+    analysis_id: int,
+    *,
+    window_n: int = 8,
+) -> list[AnyMessage]:
+    """analysis의 최근 window_n개 turn에 속한 메시지를 LangChain 메시지로 반환.
+
+    Args:
+        db: SQLAlchemy 세션.
+        analysis_id: 대상 분석의 PK.
+        window_n: 유지할 turn 개수(첫 등장 순서 기준 마지막 N개).
+
+    Returns:
+        sequence 정순으로 정렬된 LangChain 메시지 객체 리스트.
+    """
+    rows: list[ChatMessage] = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.analysis_id == analysis_id)
+        .order_by(ChatMessage.sequence.asc())
+        .all()
+    )
+    seen: list[str] = []
+    for r in rows:
+        if r.turn_id not in seen:
+            seen.append(r.turn_id)
+    keep_turns = set(seen[-window_n:])
+    return [_to_lc_message(r) for r in rows if r.turn_id in keep_turns]
