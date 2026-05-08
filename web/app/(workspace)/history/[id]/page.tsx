@@ -10,7 +10,7 @@ import { VerdictCard } from "@/components/analysis/verdict-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useRun } from "@/hooks/use-runs";
 import { getReportSections } from "@/lib/analysis-reports";
-import type { Decision as RunDecision } from "@/lib/runs";
+$1\nimport { ChatSection } from \"@/components/chat/chat-section\";
 
 export default function HistoryDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -109,8 +109,6 @@ export default function HistoryDetailPage() {
               />
             </CardContent>
           </Card>
-        ))}
-      </div>
-    </div>
+        ))}\n      </div>\n\n      {a.status === \"completed\" ? (\n        <ChatSection runId={id} />\n      ) : (\n        <Card>\n          <CardHeader>\n            <CardTitle>후속 대화</CardTitle>\n          </CardHeader>\n          <CardContent>\n            <p className=\"text-xs text-text-3\">\n              이 분석은 완료되지 않아 후속 대화를 할 수 없어요.\n            </p>\n          </CardContent>\n        </Card>\n      )}\n    </div>
   );
 }
