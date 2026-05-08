@@ -7,6 +7,7 @@ import {
   type TextRenderMode,
 } from "@/components/analysis/markdown-text";
 import { VerdictCard } from "@/components/analysis/verdict-card";
+import { ChatSection } from "@/components/chat/chat-section";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useRun } from "@/hooks/use-runs";
 import { getReportSections } from "@/lib/analysis-reports";
@@ -111,6 +112,21 @@ export default function HistoryDetailPage() {
           </Card>
         ))}
       </div>
+
+      {a.status === "completed" ? (
+        <ChatSection runId={id} />
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>후속 대화</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-text-3">
+              이 분석은 완료되지 않아 후속 대화를 할 수 없어요.
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

@@ -15,7 +15,18 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Literal
 
-EventType = Literal["agent_message", "progress", "done", "error", "cancelled"]
+EventType = Literal[
+    "agent_message",
+    "progress",
+    "done",
+    "error",
+    "cancelled",
+    # 채팅 turn 전용
+    "token",
+    "tool_call",
+    "tool_result",
+    "close",
+]
 
 
 @dataclass(frozen=True)

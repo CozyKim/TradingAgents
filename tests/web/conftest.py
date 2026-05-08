@@ -7,9 +7,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from tradingagents_web.auth import create_session
+from tradingagents_web.config import Settings
 from tradingagents_web.db import SessionLocal as ProdSessionLocal
 from tradingagents_web.db import get_db
-from tradingagents_web.models import Base
+from tradingagents_web.models import Base, User
+
+_settings = Settings()
 
 
 @pytest.fixture()
@@ -46,5 +50,43 @@ def app_with_test_db(tmp_path: Path):
 
 @pytest.fixture()
 def client(app_with_test_db) -> TestClient:
+    """인증 없는 TestClient (기존 동작 유지)."""
     app, _ = app_with_test_db
     return TestClient(app)
+
+
+@pytest.fixture()
+def client_unauth(app_with_test_db) -> TestClient:
+    """인증 없는 TestClient (명시적 미인증)."""
+    app, _ = app_with_test_db
+    return TestClient(app)
+
+
+@pytest.fixture()
+def auth_client(app_with_test_db) -> TestClient:
+    """세션 쿠키가 설정된 인증 TestClient."""
+    app, TestSessionLocal = app_with_test_db
+    tc = TestClient(app)
+    db = TestSessionLocal()
+    try:
+        user = User(password_hash="x")
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        token = create_session(db, user.id)
+    finally:
+        db.close()
+    tc.cookies.set(_settings.session_cookie_name, token)
+    return tc
+
+
+@pytest.fixture()
+def db_session(app_with_test_db):
+    """Provide a clean database session for each test."""
+    _, TestSessionLocal = app_with_test_db
+    db = TestSessionLocal()
+    try:
+        yield db
+    finally:
+        db.rollback()
+        db.close()
