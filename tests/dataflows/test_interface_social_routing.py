@@ -75,6 +75,16 @@ class SocialToolWrapperTests(unittest.TestCase):
             self.assertEqual(result, "ROUTED")
             mock_route.assert_called_once_with("get_social_messages", "AAPL", 25)
 
+    def test_get_social_messages_default_limit_is_30(self):
+        from tradingagents.agents.utils.social_data_tools import get_social_messages
+
+        with patch(
+            "tradingagents.agents.utils.social_data_tools.route_to_vendor",
+            return_value="ROUTED",
+        ) as mock_route:
+            get_social_messages.invoke({"ticker": "AAPL"})
+            mock_route.assert_called_once_with("get_social_messages", "AAPL", 30)
+
 
 if __name__ == "__main__":
     unittest.main()
