@@ -72,7 +72,7 @@ def _spawn_turn_task(*, run_id: str, analysis_id: int, turn_id: str) -> None:
     response_model=ChatTurnCreateResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_turn(
+async def create_turn(
     run_id: str,
     payload: ChatTurnCreateRequest,
     db: Annotated[OrmSession, Depends(get_db)],

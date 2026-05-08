@@ -60,7 +60,7 @@ def test_summarization_middleware_uses_quick_model():
         summarization_middleware(_analysis())
         mk.assert_called_once_with(provider="openai", model="gpt-5-mini")
         kwargs = smw.call_args.kwargs
-        assert kwargs["trigger"] == ("fraction", 0.7)
+        assert kwargs["trigger"] == ("messages", 24)
         assert kwargs["keep"] == ("messages", 12)
 
 

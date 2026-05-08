@@ -46,8 +46,8 @@ def chat_channel(run_id: str, turn_id: str) -> str:
 
 # 모듈 상수 — § 12.3 Spec
 CHAT_TURN_WINDOW = 8
-SUMMARY_TRIGGER_FRACTION = 0.7
-SUMMARY_KEEP_MESSAGES = 12
+SUMMARY_TRIGGER_MESSAGES = 24  # 24개 메시지(≈12턴) 누적 시 요약 트리거
+SUMMARY_KEEP_MESSAGES = 12  # 요약 후 최근 12개 메시지(≈6턴)는 원문 유지
 
 
 def resolve_chat_model(analysis: Analysis) -> Any:
@@ -70,12 +70,13 @@ def summarization_middleware(analysis: Analysis) -> SummarizationMiddleware:
         analysis: Analysis 행.
 
     Returns:
-        SummarizationMiddleware 인스턴스 (trigger=fraction 0.7, keep=messages 12).
+        SummarizationMiddleware 인스턴스. fraction trigger는 모델 profile이
+        필요한데 codex_oauth 등 일부 provider는 profile 없음 → messages 기반.
     """
     quick = create_llm_client(provider=analysis.llm_provider, model=analysis.llm_quick_model)
     return SummarizationMiddleware(
         model=quick.get_llm(),
-        trigger=("fraction", SUMMARY_TRIGGER_FRACTION),
+        trigger=("messages", SUMMARY_TRIGGER_MESSAGES),
         keep=("messages", SUMMARY_KEEP_MESSAGES),
         summary_prompt=KO_SUMMARY_PROMPT,
     )
@@ -249,11 +250,18 @@ async def _execute_turn(*, run_id: str, analysis_id: int, turn_id: str) -> None:
 
         async for chunk in agent.astream(
             {"messages": history},
-            stream_mode=["messages", "updates"],
+            stream_mode=["messages", "updates", "values"],
             version="v2",
         ):
             ctype = chunk.get("type")
             data = chunk.get("data")
+            if ctype == "values":
+                # 매 step 후 전체 state — 마지막 메시지가 AIMessage면 final 후보
+                if isinstance(data, dict):
+                    msgs = data.get("messages") or []
+                    if msgs and isinstance(msgs[-1], AIMessage):
+                        final_message = msgs[-1]
+                continue
             if ctype == "messages":
                 token, _ = data
                 if isinstance(token, AIMessageChunk) and token.text:
@@ -268,7 +276,13 @@ async def _execute_turn(*, run_id: str, analysis_id: int, turn_id: str) -> None:
                     )
             elif ctype == "updates":
                 for source, update in data.items():
-                    last = update["messages"][-1]
+                    # 일부 노드(middleware hook 등)는 None 또는 messages 키 없는 update를 yield
+                    if not update or not isinstance(update, dict):
+                        continue
+                    msgs = update.get("messages")
+                    if not msgs:
+                        continue
+                    last = msgs[-1]
                     if source == "model" and isinstance(last, AIMessage):
                         final_message = last
                         for tc in last.tool_calls or []:
