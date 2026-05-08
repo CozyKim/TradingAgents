@@ -191,7 +191,7 @@ def _persist_tool(
         msg: LangChain ToolMessage.
     """
     seq = _next_sequence(db, analysis_id)
-    blocks: list[dict[str, Any]] = (
+    blocks: list[Any] = (
         msg.content
         if isinstance(msg.content, list)
         else [{"type": "text", "text": str(msg.content)}]
@@ -255,7 +255,7 @@ async def _execute_turn(*, run_id: str, analysis_id: int, turn_id: str) -> None:
             ctype = chunk.get("type")
             data = chunk.get("data")
             if ctype == "messages":
-                token, _meta = data
+                token, _ = data
                 if isinstance(token, AIMessageChunk) and token.text:
                     bi = 0  # MVP: 단일 텍스트 블록
                     text_blocks[bi] = text_blocks.get(bi, "") + token.text
