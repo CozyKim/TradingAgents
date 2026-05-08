@@ -48,3 +48,15 @@ def app_with_test_db(tmp_path: Path):
 def client(app_with_test_db) -> TestClient:
     app, _ = app_with_test_db
     return TestClient(app)
+
+
+@pytest.fixture()
+def db_session(app_with_test_db):
+    """Provide a clean database session for each test."""
+    _, TestSessionLocal = app_with_test_db
+    db = TestSessionLocal()
+    try:
+        yield db
+    finally:
+        db.rollback()
+        db.close()
