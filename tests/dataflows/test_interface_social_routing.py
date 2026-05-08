@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from tradingagents.dataflows import interface
 
@@ -46,6 +46,34 @@ class SocialRoutingTests(unittest.TestCase):
         self.assertEqual(
             interface.get_category_for_method("get_social_messages"), "social_data"
         )
+
+
+class SocialToolWrapperTests(unittest.TestCase):
+    def test_get_social_sentiment_tool_invokes_router(self):
+        from tradingagents.agents.utils.social_data_tools import get_social_sentiment
+
+        with patch(
+            "tradingagents.agents.utils.social_data_tools.route_to_vendor",
+            return_value="ROUTED",
+        ) as mock_route:
+            result = get_social_sentiment.invoke(
+                {"ticker": "AAPL", "start_date": "2026-05-01", "end_date": "2026-05-08"}
+            )
+            self.assertEqual(result, "ROUTED")
+            mock_route.assert_called_once_with(
+                "get_social_sentiment", "AAPL", "2026-05-01", "2026-05-08"
+            )
+
+    def test_get_social_messages_tool_invokes_router(self):
+        from tradingagents.agents.utils.social_data_tools import get_social_messages
+
+        with patch(
+            "tradingagents.agents.utils.social_data_tools.route_to_vendor",
+            return_value="ROUTED",
+        ) as mock_route:
+            result = get_social_messages.invoke({"ticker": "AAPL", "limit": 25})
+            self.assertEqual(result, "ROUTED")
+            mock_route.assert_called_once_with("get_social_messages", "AAPL", 25)
 
 
 if __name__ == "__main__":
