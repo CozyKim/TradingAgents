@@ -49,7 +49,7 @@ def finnhub_get(path: str, params: dict[str, Any]) -> dict[str, Any]:
     query = dict(params)
     query["token"] = key
     url = f"{API_BASE_URL}{path}"
-    _log.debug("finnhub_get path=%s params=%s", path, {k: v for k, v in params.items()})
+    _log.debug("finnhub_get path=%s param_keys=%s", path, list(params))
     resp = requests.get(url, params=query, timeout=_TIMEOUT_SECONDS)
 
     if resp.status_code in (401, 403):

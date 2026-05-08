@@ -4,21 +4,22 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from typing import Any
 
 import requests
 
-from .finnhub_common import (
-    FinnhubAuthError,
-    FinnhubRateLimitError,
-    finnhub_get,
-    get_api_key,
-)
+from .finnhub_common import finnhub_get, get_api_key
 
 _log = logging.getLogger(__name__)
 
 
-def _aggregate_by_day(entries: list[dict]) -> list[dict]:
-    """Collapse intraday entries to daily totals (date -> mentions, scores)."""
+def _aggregate_by_day(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse intraday entries to daily rows.
+
+    `mentions` is summed across all intraday buckets for the day.
+    `positive` / `negative` are *averaged* across buckets (they are scores in
+    [0, 1], not counts), and `net = positive - negative`.
+    """
     by_day: dict[str, dict] = defaultdict(lambda: {"mentions": 0, "pos": 0.0, "neg": 0.0, "n": 0})
     for entry in entries:
         at = str(entry.get("atTime") or entry.get("date") or "")[:10]
@@ -42,7 +43,8 @@ def _aggregate_by_day(entries: list[dict]) -> list[dict]:
     return out
 
 
-def _render_table(title: str, rows: list[dict]) -> str:
+def _render_table(title: str, rows: list[dict[str, Any]]) -> str:
+    """Render a daily-aggregated rows list as a markdown table under ``title``."""
     if not rows:
         return f"#### {title}\n\n_No data._\n"
     out = [f"#### {title}", "", "| date | mentions | positive | negative | net |",
@@ -74,8 +76,6 @@ def get_social_sentiment_finnhub(ticker: str, start_date: str, end_date: str) ->
             "/stock/social-sentiment",
             {"symbol": ticker, "from": start_date, "to": end_date},
         )
-    except (FinnhubAuthError, FinnhubRateLimitError):
-        raise
     except requests.RequestException as exc:
         _log.warning("finnhub social network error: %s", exc)
         return f"Error fetching social sentiment for {ticker}: {exc}"

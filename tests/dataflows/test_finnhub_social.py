@@ -39,10 +39,11 @@ class GetSocialSentimentFinnhubTests(unittest.TestCase):
         mock_get.return_value = _mock_response(200, payload)
         result = finnhub_social.get_social_sentiment_finnhub("AAPL", "2026-05-01", "2026-05-08")
         self.assertIn("AAPL", result)
-        self.assertIn("Reddit", result)
-        self.assertIn("Twitter", result)
-        self.assertIn("12", result)
-        self.assertIn("30", result)
+        self.assertIn("#### Reddit", result)
+        self.assertIn("#### Twitter", result)
+        # Mentions live in the second column; verify via row substrings, not just any digit.
+        self.assertIn("| 2026-05-02 | 12 |", result)
+        self.assertIn("| 2026-05-02 | 30 |", result)
 
     @patch.dict("os.environ", {"FINNHUB_API_KEY": "k"})
     @patch("tradingagents.dataflows.finnhub_common.requests.get")
