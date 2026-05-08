@@ -8,6 +8,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from tradingagents_web.api import account as account_api
 from tradingagents_web.api import alerts as alerts_api
 from tradingagents_web.api import auth as auth_api
+from tradingagents_web.api import chat as chat_api
 from tradingagents_web.api import health
 from tradingagents_web.api import holdings as holdings_api
 from tradingagents_web.api import prices as prices_api
@@ -94,6 +95,7 @@ def create_app() -> FastAPI:
     app.include_router(prices_api.router)
     app.include_router(fx_api.router)
     app.include_router(runs_api.router)
+    app.include_router(chat_api.router)
     app.include_router(schedules_api.router)
     app.include_router(settings_notifications_api.router)
     return app
