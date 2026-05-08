@@ -23,6 +23,9 @@ from .alpha_vantage import (
     get_global_news as get_alpha_vantage_global_news,
 )
 from .alpha_vantage_common import AlphaVantageRateLimitError
+from .finnhub_social import get_social_sentiment_finnhub
+from .finnhub_common import FinnhubRateLimitError
+from .stocktwits import get_social_messages_stocktwits
 
 # Configuration and routing logic
 from .config import get_config
@@ -57,12 +60,21 @@ TOOLS_CATEGORIES = {
             "get_global_news",
             "get_insider_transactions",
         ]
-    }
+    },
+    "social_data": {
+        "description": "Social media sentiment metrics and retail messages",
+        "tools": [
+            "get_social_sentiment",
+            "get_social_messages",
+        ],
+    },
 }
 
 VENDOR_LIST = [
     "yfinance",
     "alpha_vantage",
+    "finnhub",
+    "stocktwits",
 ]
 
 # Mapping of methods to their vendor-specific implementations
@@ -106,6 +118,13 @@ VENDOR_METHODS = {
     "get_insider_transactions": {
         "alpha_vantage": get_alpha_vantage_insider_transactions,
         "yfinance": get_yfinance_insider_transactions,
+    },
+    # social_data
+    "get_social_sentiment": {
+        "finnhub": get_social_sentiment_finnhub,
+    },
+    "get_social_messages": {
+        "stocktwits": get_social_messages_stocktwits,
     },
 }
 
@@ -156,7 +175,7 @@ def route_to_vendor(method: str, *args, **kwargs):
 
         try:
             return impl_func(*args, **kwargs)
-        except AlphaVantageRateLimitError:
+        except (AlphaVantageRateLimitError, FinnhubRateLimitError):
             continue  # Only rate limits trigger fallback
 
     raise RuntimeError(f"No available vendor for '{method}'")
