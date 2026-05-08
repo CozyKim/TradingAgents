@@ -217,6 +217,35 @@ Any vendor-side issue that prevents data retrieval **must return a string the LL
 - README/CLAUDE.md note added: "Social analysis requires `FINNHUB_API_KEY` for sentiment metrics; StockTwits stream works without keys."
 - If `FINNHUB_API_KEY` is unset, social analysis still partially works via StockTwits + the explicit "key not set" message.
 
+## ADDENDUM (2026-05-09): Finnhub endpoint substitution
+
+After deployment we discovered that Finnhub's `/stock/social-sentiment` and
+`/news-sentiment` endpoints are now **premium-only** (HTTP 403 on the free
+tier). Free-tier `/quote`, `/company-news`, and `/stock/insider-sentiment`
+continue to work.
+
+**Decision:** keep the public tool name `get_social_sentiment` and the routing
+wiring intact, but switch the underlying implementation
+(`get_social_sentiment_finnhub`) from `/stock/social-sentiment` to
+`/company-news`. The vendor now returns a daily-grouped markdown digest of the
+top-N headlines (default 20, capped at 50) with summary text — the analyst LLM
+infers sentiment from headline content and tone instead of consuming a
+pre-computed mention/score table.
+
+**Why this is acceptable:**
+- The original goal — give the social analyst a real, dense, free-tier data
+  source so `sentiment_report` stops landing empty — is preserved. AAPL over a
+  7-day window returned 243 candidate items in live testing.
+- The analyst system prompt was updated to advertise the new shape ("daily-
+  grouped digest of company-news headlines"), keeping prompt and tool reality
+  aligned (the original bug we set out to fix).
+- StockTwits remains the retail-tone counterpart via `get_social_messages`, so
+  the divergence-finding behavior of the analyst is unchanged.
+
+**No behavioral surface change for the LLM tool contract:** function names,
+arg names/order, return type, error-string conventions, and routing
+(`route_to_vendor("get_social_sentiment", ...)`) all stay identical.
+
 ## 13. Out of Scope (tracked for follow-up)
 
 - Reddit PRAW client (`get_social_sentiment` could grow a `reddit` vendor option later).

@@ -1,9 +1,19 @@
-"""Finnhub social sentiment vendor."""
+"""Finnhub company-news vendor used as a sentiment-signal source.
+
+Note on the endpoint choice: Finnhub's ``/stock/social-sentiment`` and
+``/news-sentiment`` are now premium-only (HTTP 403 on the free tier as of
+2026-05-08). ``/company-news`` is free, returns hundreds of recent headlines
++ summaries, and lets the analyst LLM aggregate sentiment itself. We keep
+the public function name (``get_social_sentiment_finnhub``) and tool name
+(``get_social_sentiment``) so the routing wiring stays put — only the
+underlying data source changed.
+"""
 
 from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Any
 
 import requests
@@ -12,83 +22,92 @@ from .finnhub_common import finnhub_get, get_api_key
 
 _log = logging.getLogger(__name__)
 
-
-def _aggregate_by_day(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Collapse intraday entries to daily rows.
-
-    `mentions` is summed across all intraday buckets for the day.
-    `positive` / `negative` are *averaged* across buckets (they are scores in
-    [0, 1], not counts), and `net = positive - negative`.
-    """
-    by_day: dict[str, dict] = defaultdict(lambda: {"mentions": 0, "pos": 0.0, "neg": 0.0, "n": 0})
-    for entry in entries:
-        at = str(entry.get("atTime") or entry.get("date") or "")[:10]
-        if not at:
-            continue
-        bucket = by_day[at]
-        bucket["mentions"] += int(entry.get("mention", 0) or 0)
-        bucket["pos"] += float(entry.get("positiveScore", 0) or 0)
-        bucket["neg"] += float(entry.get("negativeScore", 0) or 0)
-        bucket["n"] += 1
-    out = []
-    for date, b in sorted(by_day.items()):
-        n = max(b["n"], 1)
-        out.append({
-            "date": date,
-            "mentions": b["mentions"],
-            "positive": round(b["pos"] / n, 3),
-            "negative": round(b["neg"] / n, 3),
-            "net": round((b["pos"] - b["neg"]) / n, 3),
-        })
-    return out
+_DEFAULT_MAX_ITEMS = 20
+_SUMMARY_MAX = 240
 
 
-def _render_table(title: str, rows: list[dict[str, Any]]) -> str:
-    """Render a daily-aggregated rows list as a markdown table under ``title``."""
-    if not rows:
-        return f"#### {title}\n\n_No data._\n"
-    out = [f"#### {title}", "", "| date | mentions | positive | negative | net |",
-           "|---|---:|---:|---:|---:|"]
-    for r in rows:
-        out.append(f"| {r['date']} | {r['mentions']} | {r['positive']} | {r['negative']} | {r['net']} |")
-    out.append("")
-    return "\n".join(out)
+def _format_unix_date(ts: Any) -> str:
+    """Convert a unix timestamp (int/float) to yyyy-mm-dd; fall back to '(unknown)'."""
+    try:
+        if not ts:
+            return "(unknown)"
+        return datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime("%Y-%m-%d")
+    except (ValueError, OSError, OverflowError):
+        return "(unknown)"
 
 
-def get_social_sentiment_finnhub(ticker: str, start_date: str, end_date: str) -> str:
-    """Fetch Finnhub /stock/social-sentiment and render a markdown report.
+def _truncate_summary(text: str) -> str:
+    text = (text or "").replace("\n", " ").strip()
+    return text if len(text) <= _SUMMARY_MAX else text[: _SUMMARY_MAX - 1] + "…"
+
+
+def get_social_sentiment_finnhub(
+    ticker: str,
+    start_date: str,
+    end_date: str,
+    max_items: int = _DEFAULT_MAX_ITEMS,
+) -> str:
+    """Fetch Finnhub ``/company-news`` and render a daily-grouped markdown digest.
+
+    Returns the most recent ``max_items`` headlines (newest first) grouped by
+    publication date. The analyst LLM uses this as the primary input for
+    deriving sentiment direction and notable narratives — the actual social
+    sentiment endpoint is no longer accessible on the free Finnhub tier.
 
     Args:
         ticker: Bare ticker symbol (e.g. "AAPL").
         start_date: yyyy-mm-dd inclusive.
         end_date: yyyy-mm-dd inclusive.
+        max_items: Maximum headlines to render (default 20). Clamped to [1, 50].
 
     Returns:
         A markdown string. On missing key or network error, returns a user-visible
         explanation string (not an exception). On 401/403/429, raises so
-        route_to_vendor can fall through.
+        ``route_to_vendor`` can fall through.
     """
     if not get_api_key():
-        return "FINNHUB_API_KEY not set; social sentiment unavailable. Set FINNHUB_API_KEY to enable."
+        return (
+            "FINNHUB_API_KEY not set; company-news signal unavailable. "
+            "Set FINNHUB_API_KEY to enable."
+        )
 
     try:
         body = finnhub_get(
-            "/stock/social-sentiment",
+            "/company-news",
             {"symbol": ticker, "from": start_date, "to": end_date},
         )
     except requests.RequestException as exc:
-        _log.warning("finnhub social network error: %s", exc)
-        return f"Error fetching social sentiment for {ticker}: {exc}"
+        _log.warning("finnhub company-news network error: %s", exc)
+        return f"Error fetching company news for {ticker}: {exc}"
 
-    reddit = body.get("reddit") or []
-    twitter = body.get("twitter") or []
-    if not reddit and not twitter:
-        return f"No social sentiment data for {ticker} between {start_date} and {end_date}."
+    # finnhub_get wraps list payloads under "items".
+    items: list[dict[str, Any]] = body.get("items") or []
+    if not items:
+        return (
+            f"No company news for {ticker} between {start_date} and {end_date}."
+        )
+
+    capped = max(1, min(int(max_items), 50))
+    items_sorted = sorted(items, key=lambda it: it.get("datetime", 0), reverse=True)[:capped]
+
+    by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for it in items_sorted:
+        by_day[_format_unix_date(it.get("datetime"))].append(it)
 
     parts = [
-        f"## Social Sentiment — {ticker} ({start_date} → {end_date})",
+        f"## Company News & Sentiment Signals — {ticker} ({start_date} → {end_date})",
         "",
-        _render_table("Reddit", _aggregate_by_day(reddit)),
-        _render_table("Twitter", _aggregate_by_day(twitter)),
+        f"_Source: Finnhub /company-news. Top {len(items_sorted)} of {len(items)} items, newest first._",
+        "",
     ]
-    return "\n".join(parts)
+    for date in sorted(by_day.keys(), reverse=True):
+        parts.append(f"### {date}")
+        for it in by_day[date]:
+            headline = it.get("headline") or "(no headline)"
+            source = it.get("source") or "?"
+            parts.append(f"- **{headline}** ({source})")
+            summary = _truncate_summary(it.get("summary", ""))
+            if summary:
+                parts.append(f"  {summary}")
+        parts.append("")
+    return "\n".join(parts).rstrip() + "\n"
