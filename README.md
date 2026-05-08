@@ -27,7 +27,16 @@
 
 # TradingAgents: Multi-Agents LLM Financial Trading Framework
 
+> **Fork note (CozyKim/TradingAgents):** 이 포크는 업스트림 CLI 위에 FastAPI 백엔드(`tradingagents_web/`)와 Next.js Toss 스타일 워크스페이스(`web/`)를 추가합니다. 포트폴리오 모니터링, cron 기반 스케줄, 알림(in-app + Telegram), 비교 뷰, PWA, SQLite 백업/복원 등이 포함되며 셋업·운영 가이드는 [`DEV.md`](./DEV.md)에 있습니다.
+
+<p align="center">
+  <img src="assets/web-login-desktop.png" alt="Web workspace (desktop)" width="78%">
+  <img src="assets/web-login-mobile.png"  alt="Web workspace (mobile)"  width="20%">
+</p>
+
 ## News
+- [2026-05] **Fork: Toss-style UI rebrand** — 워크스페이스 전반(대시보드/포트폴리오/스케줄/알림)을 Toss 스타일로 리디자인하고 `TickerCombobox` 기반의 한글·영문 통합 티커 검색을 도입.
+- [2026-04] **Fork: Web app M2 → M5** — FastAPI + Next.js 14 워크스페이스 추가. M2 Run/History(SSE 진행 표시), M3 Portfolio + APScheduler cron 자동 분석, M4 Alerts(in-app + Telegram), M5 Polish(PWA, History 비교 뷰, Account 백업/복원).
 - [2026-03] **TradingAgents v0.2.3** released with multi-language support, GPT-5.4 family models, unified model catalog, backtesting date fidelity, and proxy support.
 - [2026-03] **TradingAgents v0.2.2** released with GPT-5.4/Gemini 3.1/Claude 4.6 model coverage, five-tier rating scale, OpenAI Responses API, Anthropic effort control, and cross-platform stability.
 - [2026-02] **TradingAgents v0.2.0** released with multi-provider LLM support (GPT-5.x, Gemini 3.x, Claude 4.x, Grok 4.x) and improved system architecture.
@@ -117,6 +126,14 @@ Install the package and its dependencies:
 ```bash
 pip install .
 ```
+
+또는 `uv`를 사용하는 경우 (이 포크의 권장 방식, `pyproject.toml` + `uv.lock` 동기화):
+```bash
+uv sync                           # 의존성 설치 (.venv 자동 생성)
+uv run tradingagents              # CLI 실행
+uv run alembic upgrade head       # 웹 앱 사용 시 DB 마이그레이션
+```
+웹 앱 셋업·실행 흐름은 [`DEV.md`](./DEV.md) 참조.
 
 ### Docker
 
