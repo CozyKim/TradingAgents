@@ -1,13 +1,13 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const PASSWORD = process.env.E2E_PASSWORD ?? "test1234";
 
-async function login(page) {
+async function login(page: Page) {
   await page.goto("/login");
   await page.getByLabel(/비밀번호|password/i).fill(PASSWORD);
   await page.getByRole("button", { name: /로그인|sign in/i }).click();
   // 로그인 후 루트("/") 또는 워크스페이스 하위 경로로 리다이렉트
-  await page.waitForURL(url => url.pathname !== "/login", { timeout: 30_000 });
+  await page.waitForURL((url: URL) => url.pathname !== "/login", { timeout: 30_000 });
 }
 
 test.describe("analysis chat", () => {
