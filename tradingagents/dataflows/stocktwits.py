@@ -13,7 +13,7 @@ _log = logging.getLogger(__name__)
 
 
 def _truncate(text: str, limit: int = _BODY_MAX) -> str:
-    text = (text or "").replace("\n", " ").strip()
+    text = text.replace("\n", " ").strip()
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
