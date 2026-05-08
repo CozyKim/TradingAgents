@@ -113,3 +113,19 @@ def build_message_history(
             seen.append(r.turn_id)
     keep_turns = set(seen[-window_n:])
     return [_to_lc_message(r) for r in rows if r.turn_id in keep_turns]
+
+
+KO_SUMMARY_PROMPT = """\
+다음은 한 종목 분석 결과에 대한 사용자와 어시스턴트의 후속 대화입니다.
+이전 대화의 핵심 정보를 한국어로 요약하세요.
+
+요약 시 반드시 포함할 것:
+- 사용자가 반복적으로 묻거나 강조한 관점/관심사
+- 어시스턴트가 이미 호출한 도구와 그 결과의 핵심 수치(가격, 변화율, 핵심 뉴스 헤드라인 등)
+- 합의된 결론이나 사용자가 수용/거부한 의견
+
+요약은 사실 위주의 불릿 5~8개로 작성하고, 추측이나 해석을 추가하지 마세요.
+
+[대화 내역]
+{messages}
+"""
