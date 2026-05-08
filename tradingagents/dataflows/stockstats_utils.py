@@ -8,6 +8,7 @@ from stockstats import wrap
 from typing import Annotated
 import os
 from .config import get_config
+from ._yf_lock import YF_LOCK
 
 logger = logging.getLogger(__name__)
 
@@ -66,19 +67,64 @@ def load_ohlcv(symbol: str, curr_date: str) -> pd.DataFrame:
         f"{symbol}-YFin-data-{start_str}-{end_str}.csv",
     )
 
-    if os.path.exists(data_file):
-        data = pd.read_csv(data_file, on_bad_lines="skip", encoding="utf-8")
-    else:
-        data = yf_retry(lambda: yf.download(
-            symbol,
-            start=start_str,
-            end=end_str,
-            multi_level_index=False,
-            progress=False,
-            auto_adjust=True,
-        ))
-        data = data.reset_index()
-        data.to_csv(data_file, index=False, encoding="utf-8")
+    # Treat header-only / empty cache files as missing. yfinance occasionally
+    # returns an empty frame (rate limit, market-open transient, bad ticker),
+    # which we used to persist as a 0-row CSV and then re-read forever — every
+    # downstream indicator would then silently report "Not a trading day".
+    cache_usable = (
+        os.path.exists(data_file) and os.path.getsize(data_file) > 64
+    )
+
+    data: pd.DataFrame | None = None
+    if cache_usable:
+        cached = pd.read_csv(data_file, on_bad_lines="skip", encoding="utf-8")
+        # Reject caches written before the YF_LOCK fix that captured a
+        # multi-ticker frame. The original CSV header was "Close,Close,
+        # High,High,...", which pandas read_csv silently renames to
+        # "Close,Close.1,High,High.1,..." — so we check for the suffix
+        # rather than duplicated().
+        contaminated = any(
+            isinstance(c, str) and any(
+                c.startswith(f"{base}.") and c[len(base) + 1:].isdigit()
+                for base in ("Open", "High", "Low", "Close", "Volume", "Adj Close")
+            )
+            for c in cached.columns
+        )
+        if contaminated:
+            logger.warning(
+                "discarding contaminated cache for %s (%s) — multi-ticker columns %s; refetching",
+                symbol, data_file, list(cached.columns),
+            )
+            try:
+                os.remove(data_file)
+            except OSError:
+                pass
+        else:
+            data = cached
+
+    if data is None:
+        # YF_LOCK is shared with the web price/fx services. yfinance is not
+        # thread-safe — its module-level shared._DFS leaks between concurrent
+        # callers, which previously caused holdings prices to silently swap
+        # across tickers when an analysis run overlapped a portfolio fetch.
+        with YF_LOCK:
+            raw = yf_retry(lambda: yf.download(
+                symbol,
+                start=start_str,
+                end=end_str,
+                multi_level_index=False,
+                progress=False,
+                auto_adjust=True,
+            ))
+        if raw is None or raw.empty:
+            logger.warning(
+                "yfinance returned no rows for %s [%s..%s]; skipping cache write",
+                symbol, start_str, end_str,
+            )
+            return pd.DataFrame()
+        fetched: pd.DataFrame = raw.reset_index()
+        fetched.to_csv(data_file, index=False, encoding="utf-8")
+        data = fetched
 
     data = _clean_dataframe(data)
 
@@ -114,6 +160,8 @@ class StockstatsUtils:
         ],
     ):
         data = load_ohlcv(symbol, curr_date)
+        if data.empty:
+            return f"N/A: No price data available for {symbol}"
         df = wrap(data)
         df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
         curr_date_str = pd.to_datetime(curr_date).strftime("%Y-%m-%d")

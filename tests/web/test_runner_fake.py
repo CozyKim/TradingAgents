@@ -65,6 +65,31 @@ def test_extract_decision_word_boundaries():
     assert _extract_decision("nothing relevant") is None
 
 
+def test_extract_decision_rating_header_wins_over_body_mentions():
+    # Reproduces the regression where the body referenced Hold/Buy while
+    # the actual Rating was Sell.
+    text = (
+        "1. **Rating**: **Sell**\n\n"
+        "2. **Executive Summary**:\n"
+        "GOOGL에 대한 최종 결정은 **Sell**입니다.\n"
+        "중립 애널리스트의 Hold 논리는 균형적이지만 단순 Hold보다 적극적 축소가 적절합니다.\n"
+        "공격적 애널리스트가 Buy를 주장했으나 받아들이지 않습니다.\n"
+    )
+    assert _extract_decision(text) == "SELL"
+
+
+def test_extract_decision_rating_header_handles_alt_formats():
+    assert _extract_decision("## 1. **Rating: Hold**\n\n매수/매도/보유 논의...") == "HOLD"
+    assert _extract_decision("**Rating**: Overweight\n\nBuy 신호도 일부 존재") == "OVERWEIGHT"
+    assert _extract_decision("Rating:    Underweight — 추가 매수 자제") == "UNDERWEIGHT"
+
+
+def test_extract_decision_falls_back_to_earliest_when_no_header():
+    # Without a Rating header, pick whichever decision keyword comes first.
+    assert _extract_decision("We recommend SELL given valuation. Some considered Hold.") == "SELL"
+    assert _extract_decision("HOLD for now, do not BUY at these levels.") == "HOLD"
+
+
 async def test_fake_runner_done_event_payload_shape():
     bus = EventBus()
     runner = FakeRunner(bus=bus, delay=0.0)

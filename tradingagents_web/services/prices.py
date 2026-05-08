@@ -8,21 +8,17 @@ grow unbounded. Each entry key is ``(TICKER, days)`` and value is
 from __future__ import annotations
 
 import logging
-import threading
 import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
+from tradingagents.dataflows._yf_lock import YF_LOCK as _YF_LOCK
 from tradingagents_web.schemas.price import PriceHistoryResponse, PricePoint
 
 logger = logging.getLogger(__name__)
 
 _TTL_SECONDS = 300  # 5 minutes
 _CACHE: dict[tuple[str, int], tuple[float, PriceHistoryResponse]] = {}
-# yfinance.download is not thread-safe: concurrent calls share internal state
-# and can return another ticker's frame. Serialize the network call only —
-# cache hits stay lock-free.
-_YF_LOCK = threading.Lock()
 
 
 def _yf_download(
@@ -33,7 +29,16 @@ def _yf_download(
     progress: bool = False,
     auto_adjust: bool = True,
 ) -> Any:
-    """Indirection so tests can monkeypatch yfinance.download cleanly."""
+    """Indirection so tests can monkeypatch yfinance.download cleanly.
+
+    ``multi_level_index=False`` makes yfinance return flat columns
+    (``Close``, ``Open``, ...) instead of the ``(field, ticker)`` MultiIndex
+    that 0.2.40+ defaults to. The lock and the flat-column request are both
+    necessary: the lock prevents ``shared._DFS`` from leaking another caller's
+    ticker into our result, and the flat columns mean a single Close value
+    is unambiguous even if a future yfinance version starts returning extra
+    series.
+    """
     import yfinance as yf
 
     with _YF_LOCK:
@@ -44,6 +49,7 @@ def _yf_download(
             interval=interval,
             progress=progress,
             auto_adjust=auto_adjust,
+            multi_level_index=False,
         )
 
 
@@ -74,10 +80,24 @@ def get_price_history(ticker: str, days: int = 90) -> PriceHistoryResponse:
     points: list[PricePoint] = []
     last_close: float | None = None
     if df is not None and len(df) > 0 and "Close" in df.columns:
-        for ts, row in df.iterrows():
-            close = float(row["Close"])
-            points.append(PricePoint(date=ts.date(), close=close))
-        last_close = points[-1].close if points else None
+        close_col = df["Close"]
+        # Defense-in-depth: if a future code path leaks a multi-ticker frame
+        # past the lock, prefer the requested ticker's column over a blind
+        # iloc[:, 0] that would silently return another ticker's data.
+        if hasattr(close_col, "columns"):
+            if key[0] in close_col.columns:
+                close_col = close_col[key[0]]
+            else:
+                logger.warning(
+                    "prices: Close column for %s missing from frame %s; "
+                    "discarding to avoid cross-ticker contamination",
+                    key[0], list(close_col.columns),
+                )
+                close_col = None
+        if close_col is not None:
+            for ts, val in close_col.items():
+                points.append(PricePoint(date=ts.date(), close=float(val)))
+            last_close = points[-1].close if points else None
 
     response = PriceHistoryResponse(
         ticker=key[0],

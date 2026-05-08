@@ -1,9 +1,9 @@
 """yfinance USD/KRW wrapper with a 24-hour TTL cache.
 
 The cache holds at most one entry (single currency pair). yfinance.download
-is not thread-safe, so we share services.prices._YF_LOCK rather than taking
-a separate lock — taking two locks would let concurrent callers race inside
-yfinance's internal globals.
+is not thread-safe, so every yfinance call in the process must acquire the
+shared YF_LOCK; the lock lives in tradingagents.dataflows._yf_lock so the
+analysis pipeline can share it too.
 """
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ import time
 from datetime import date, datetime, timezone
 from typing import Any
 
+from tradingagents.dataflows._yf_lock import YF_LOCK
 from tradingagents_web.schemas.fx import FxRate
-from tradingagents_web.services.prices import _YF_LOCK
 
 logger = logging.getLogger(__name__)
 
@@ -24,20 +24,20 @@ _CACHE: tuple[float, FxRate] | None = None
 def _yf_download(ticker: str, period: str = "5d", interval: str = "1d") -> Any:
     """Indirection so tests can monkeypatch this module directly.
 
-    yfinance accepts either (start, end) or period; we use period here
-    because we just want the last few business days for FX. The shared
-    _YF_LOCK from services.prices serializes all yfinance calls in this
-    process.
+    ``multi_level_index=False`` keeps the columns flat (``Close`` is a
+    Series rather than a single-column DataFrame). YF_LOCK serializes all
+    yfinance access in the process so concurrent calls cannot leak frames.
     """
     import yfinance as yf
 
-    with _YF_LOCK:
+    with YF_LOCK:
         return yf.download(
             ticker,
             period=period,
             interval=interval,
             progress=False,
             auto_adjust=True,
+            multi_level_index=False,
         )
 
 
@@ -45,7 +45,13 @@ def _extract_last_close(df: Any) -> tuple[float | None, date | None]:
     """Return (rate, as_of) from a yfinance DataFrame, skipping NaN rows."""
     if df is None or len(df) == 0 or "Close" not in df.columns:
         return None, None
-    series = df["Close"].dropna()
+    close = df["Close"]
+    # Defensive: with the lock + multi_level_index=False this should always
+    # be a Series, but guard against a future caller bypassing the lock and
+    # leaving a multi-ticker frame in shared._DFS.
+    if hasattr(close, "columns"):
+        return None, None
+    series = close.dropna()
     if series.empty:
         return None, None
     last_ts = series.index[-1]

@@ -27,10 +27,15 @@ export default function PortfolioDetail() {
     if (!history?.items || !price?.points) return [];
     const closeByDate = new Map(price.points.map((p) => [p.date, p.close]));
     const out: SignalMarker[] = [];
+    // history.items는 created_at DESC 정렬 — 같은 analysis_date에 대해
+    // 가장 먼저 만나는 항목이 최신이므로, 그 이후 중복은 스킵해 최신만 표시한다.
+    const seenDates = new Set<string>();
     for (const r of history.items) {
       if (!r.decision) continue;
+      if (seenDates.has(r.analysis_date)) continue;
       const c = closeByDate.get(r.analysis_date);
       if (c == null) continue;
+      seenDates.add(r.analysis_date);
       out.push({ date: r.analysis_date, decision: r.decision, close: c });
     }
     return out;

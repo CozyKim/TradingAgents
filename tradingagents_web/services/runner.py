@@ -412,11 +412,23 @@ def _json_safe_value(value: Any) -> Any:
     return str(value)
 
 
+_DECISION_KEYWORDS: tuple[str, ...] = (
+    "BUY",
+    "OVERWEIGHT",
+    "HOLD",
+    "UNDERWEIGHT",
+    "SELL",
+)
+
+
 def _extract_decision(text: str) -> str | None:
     """Extract a canonical trade decision keyword from free-form text.
 
-    Uses word-boundary matching so that substrings like "BUYING" or "HOUSEHOLD"
-    do not false-match "BUY" or "HOLD".
+    The portfolio manager prompt requires the response to start with a
+    ``**Rating**: <X>`` header where ``<X>`` is one of Buy / Overweight /
+    Hold / Underweight / Sell. Anchor the match to that header first, since
+    the body of the response routinely references all five labels while
+    summarising the analyst debate (e.g. "단순 Hold보다 Sell이 적절").
 
     Args:
         text: The raw ``final_trade_decision`` value from the graph state.
@@ -425,7 +437,24 @@ def _extract_decision(text: str) -> str | None:
         One of "BUY", "OVERWEIGHT", "HOLD", "UNDERWEIGHT", "SELL", or None.
     """
     upper = text.upper()
-    for word in ("BUY", "OVERWEIGHT", "HOLD", "UNDERWEIGHT", "SELL"):
-        if re.search(rf"\b{word}\b", upper):
-            return word
-    return None
+    keyword_alt = "|".join(_DECISION_KEYWORDS)
+
+    # Prefer the structured "Rating: <X>" header. ``[^A-Z0-9]`` keeps the
+    # gap permissive (asterisks, colons, whitespace) while disallowing other
+    # alphanumeric tokens like "SCALE" between the header and the keyword.
+    rating_match = re.search(
+        rf"\bRATING\b[^A-Z0-9]{{0,10}}({keyword_alt})\b",
+        upper,
+    )
+    if rating_match:
+        return rating_match.group(1)
+
+    # Fallback: earliest keyword wins. Iterating in priority order and
+    # returning on first hit (the previous behaviour) misclassified texts
+    # whose Rating was Sell but body mentioned Hold or Buy first.
+    earliest: tuple[int, str] | None = None
+    for word in _DECISION_KEYWORDS:
+        m = re.search(rf"\b{word}\b", upper)
+        if m and (earliest is None or m.start() < earliest[0]):
+            earliest = (m.start(), word)
+    return earliest[1] if earliest else None
