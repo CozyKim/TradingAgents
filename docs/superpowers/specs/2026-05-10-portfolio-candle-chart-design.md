@@ -40,28 +40,99 @@ class PricePoint(BaseModel):
 
 ### 4.2 서비스 (`tradingagents_web/services/prices.py`)
 
+**OHLCV 추출 헬퍼**:
+
 ```python
-# 다중 컬럼을 한 번에 추출
-need = ["Open", "High", "Low", "Close", "Volume"]
-if not all(c in df.columns for c in need):
-    # 방어적 폴백: 누락 시 빈 응답으로 처리, 로그 1회
-    ...
-sub = df[need]
-for ts, row in sub.iterrows():
-    points.append(PricePoint(
-        date=ts.date(),
-        open=float(row["Open"]),
-        high=float(row["High"]),
-        low=float(row["Low"]),
-        close=float(row["Close"]),
-        volume=int(row["Volume"]) if pd.notna(row["Volume"]) else 0,
-    ))
-last_close = points[-1].close if points else None
+import math
+import pandas as pd
+
+OHLCV_FIELDS: tuple[str, ...] = ("Open", "High", "Low", "Close", "Volume")
+
+def _select_ticker_ohlcv(df: pd.DataFrame, ticker: str) -> pd.DataFrame | None:
+    """Return a flat-column OHLCV frame for `ticker`, or None if unrecoverable.
+
+    Handles both yfinance return shapes:
+      - flat columns: ["Open","High","Low","Close","Volume"]
+      - MultiIndex columns: [(field, ticker), ...]
+
+    Defense-in-depth: if `multi_level_index=False` is silently ignored by a
+    future yfinance version, this still rejects cross-ticker contamination
+    instead of returning the first column blindly.
+    """
+    if df is None or len(df) == 0:
+        return None
+
+    # Case 1: flat columns. Verify the full OHLCV set is present.
+    if all(f in df.columns for f in OHLCV_FIELDS):
+        # Some accessors (df["Close"]) can still be a DataFrame if the underlying
+        # frame is multi-ticker. Reject any column whose accessor isn't a Series.
+        for f in OHLCV_FIELDS:
+            col = df[f]
+            if hasattr(col, "columns"):
+                if ticker in col.columns:
+                    df = df.assign(**{f: col[ticker]})
+                else:
+                    logger.warning(
+                        "prices: %s missing from %s column for %s; aborting",
+                        ticker, f, list(col.columns),
+                    )
+                    return None
+        return df[list(OHLCV_FIELDS)]
+
+    # Case 2: MultiIndex (field, ticker). Some yfinance versions still produce
+    # this even with multi_level_index=False. Pull the requested ticker out.
+    if isinstance(df.columns, pd.MultiIndex):
+        try:
+            sub = df.xs(ticker, axis=1, level=1, drop_level=True)
+        except KeyError:
+            logger.warning("prices: ticker %s not in MultiIndex frame", ticker)
+            return None
+        if not all(f in sub.columns for f in OHLCV_FIELDS):
+            return None
+        return sub[list(OHLCV_FIELDS)]
+
+    return None
+
+
+def _row_is_valid(row: pd.Series) -> bool:
+    """All OHLC fields must be finite. Volume may be NaN (treated as 0)."""
+    for f in ("Open", "High", "Low", "Close"):
+        v = row[f]
+        if not pd.notna(v) or not math.isfinite(float(v)):
+            return False
+    return True
 ```
 
-**교차오염 방어**: 기존 `key[0] in close_col.columns` 체크는 다중 컬럼 추출에도 동일하게 적용. `df["Close"]`가 멀티컬럼 프레임이면 모든 컬럼(`Open`/`High`/`Low`/`Volume`)이 같은 형태일 가능성이 높으므로 한 번에 ticker 컬럼으로 좁힌다.
+**메인 루프**:
 
-**캐시**: 키(`(ticker, days)`)·TTL(300s)·`_CACHE` 구조 모두 그대로. 응답 페이로드만 커진다(필드 5배).
+```python
+sub = _select_ticker_ohlcv(df, key[0])
+points: list[PricePoint] = []
+last_close: float | None = None
+if sub is not None:
+    for ts, row in sub.iterrows():
+        if not _row_is_valid(row):
+            continue  # NaN/inf OHLC가 섞인 행은 통째로 스킵
+        vol_raw = row["Volume"]
+        volume = (
+            int(vol_raw)
+            if pd.notna(vol_raw) and math.isfinite(float(vol_raw))
+            else 0
+        )
+        points.append(PricePoint(
+            date=ts.date(),
+            open=float(row["Open"]),
+            high=float(row["High"]),
+            low=float(row["Low"]),
+            close=float(row["Close"]),
+            volume=volume,
+        ))
+    last_close = points[-1].close if points else None
+```
+
+**캐시**: 키(`(ticker, days)`)·TTL(300s)·`_CACHE` 구조 모두 그대로. 응답 페이로드만 커진다(필드 5배). 빈 응답 캐싱은 기존 동작과 동일(전부 스킵된 경우 빈 points로 캐시 — TTL 안에 자가 회복은 없으나 yfinance 호출량 폭주 방어가 우선).
+
+**Pydantic 검증**: `PricePoint`는 기본 float 검증만 한다. NaN/inf 차단은 위 `_row_is_valid`에서 한 번만 수행하므로 PricePoint 생성 시점에 비정상 값이 들어올 일이 없다. (Pydantic v2의 strict 모드에서도 `float('nan')`은 통과하므로 서비스 레이어에서 막는 것이 옳음.)
 
 ### 4.3 API 라우트
 
@@ -173,11 +244,22 @@ const candleSeries = chart.addCandlestickSeries({
 ### 5.5 일봉 → 주봉/월봉 리샘플링 (`resample.ts`)
 
 ```ts
-export function resample(daily: PricePoint[], unit: "1W" | "1M"): PricePoint[] {
-  // 그룹 키:
-  //   주: 해당 주의 월요일 ISO 날짜 (date-fns startOfISOWeek)
-  //   월: YYYY-MM-01
-  // 각 그룹에서:
+export type Interval = "1D" | "1W" | "1M";
+
+/** 일봉 날짜 문자열을 주/월 bucket의 대표 날짜(`YYYY-MM-DD`)로 변환. */
+export function bucketKey(date: string, interval: Interval): string {
+  if (interval === "1D") return date;
+  if (interval === "1W") {
+    // 해당 주의 월요일 ISO 날짜 (date-fns startOfISOWeek)
+    ...
+  }
+  // "1M": YYYY-MM-01
+  return date.slice(0, 7) + "-01";
+}
+
+export function resample(daily: PricePoint[], interval: Interval): PricePoint[] {
+  if (interval === "1D") return daily;
+  // bucketKey로 그룹핑 → 각 그룹에서:
   //   open  = 첫 거래일 open
   //   close = 마지막 거래일 close
   //   high  = max(high)
@@ -186,7 +268,12 @@ export function resample(daily: PricePoint[], unit: "1W" | "1M"): PricePoint[] {
 }
 ```
 
-테스트 케이스: 임의 OHLCV 30일 → 주봉 5개로 압축, 각 봉 OHLCV 검증. 빈 입력 / 1일만 있는 입력 / 주말 결손 데이터 엣지 케이스.
+**`bucketKey`는 `alignSignals`(§ 5.7)와 공유**되어야 한다. 캔들과 마커의 time key 일관성이 깨지면 마커가 사라진다.
+
+테스트 케이스:
+- `bucketKey`: 1D 항등, 1W는 화/수/목/금/일·월 모두 같은 월요일로 매핑, 1M은 `2026-04-29 → 2026-04-01`. ISO 주(월요일 시작) 가정 명시.
+- `resample`: 임의 OHLCV 30일 → 주봉 5개로 압축, 각 봉 OHLCV 검증. 빈 입력 / 1일만 있는 입력 / 주말 결손 데이터 엣지 케이스.
+- **회귀**: `bucketKey`가 캔들과 신호에 동일하게 적용되는지(같은 date 입력 → 같은 출력) 단위 테스트.
 
 ### 5.6 SMA 4종 계산
 
@@ -202,7 +289,31 @@ Lightweight Charts `setMarkers` API로 변환. 기존 `SignalMarker` 인터페�
 | SELL / UNDERWEIGHT | `aboveBar` | `arrowDown` | `CHART.down` (#1B64DA) |
 | HOLD | `inBar` | `circle` | `CHART.hold` (#8B95A1) |
 
-기존 `signals` 계산 로직(`page.tsx:26-42`) 그대로 두고 매퍼만 추가.
+**인터벌별 시각 시간 정렬(critical)**: `signals[i].date`는 항상 일봉 기준 `analysis_date`다. 인터벌이 주/월로 바뀌면 캔들의 time key는 해당 주의 월요일 / 해당 월의 1일로 옮겨가므로, **마커도 같은 bucket key로 매핑하지 않으면 마커가 차트에서 사라지거나 잘못된 캔들 위에 놓인다**. 이 변환은 `resample.ts`와 같은 bucket 함수를 공유한다:
+
+```ts
+import { bucketKey, type Interval } from "./resample";
+
+function alignSignals(
+  signals: SignalMarker[],
+  interval: Interval,
+): SignalMarker[] {
+  if (interval === "1D") return signals;
+  // bucket → 가장 최신 신호 1개 (Map은 동일 키 덮어쓰기 — 입력이 created_at DESC 정렬이라
+  // 가정하고, 최신을 먼저 본 시점에서 잠금. page.tsx:30-42의 seenDates 로직과 동일 정책).
+  const out = new Map<string, SignalMarker>();
+  for (const s of signals) {
+    const k = bucketKey(s.date, interval);
+    if (out.has(k)) continue; // 한 bucket의 최신 신호 1개만 유지
+    out.set(k, { ...s, date: k });
+  }
+  return [...out.values()];
+}
+```
+
+**정책**: 한 bucket(주/월) 안에 여러 결정이 있으면 **최신 1개만 표시**. 누적 마커는 차트를 노이즈로 만들고, 마커 색이 BUY와 SELL이 섞이면 의미 전달이 무너진다. 이 정책은 일봉 모드의 `seenDates` 로직(같은 날짜에 최신만)과 일관된다.
+
+**테스트**: 인터벌 탭 전환 후 마커가 사라지지 않고 같은 캔들 위치에 일대일 대응으로 남아 있는지 확인하는 단위 테스트(`alignSignals`) + Playwright DOM 어설션(주봉 모드에서도 마커 SVG 노드가 N개 존재).
 
 ### 5.8 OHLC 헤더
 
@@ -242,15 +353,29 @@ chart.timeScale().setVisibleLogicalRange(range);
 ### 7.1 백엔드
 
 `tests/web/test_prices_service.py`(기존 갱신) + `tests/web/test_prices_api.py`(필요 시 응답 스냅샷 갱신):
-- yfinance가 OHLCV 5컬럼을 주는 mock 응답 → `PriceHistoryResponse.points[0]`에 5개 필드 모두 채워졌는지.
-- Volume이 NaN인 행 → `volume=0`으로 정규화.
-- 멀티컬럼 프레임에서 다른 ticker 컬럼 누락 시 폐기 동작이 동일하게 유지되는지(교차오염 방어 회귀 보존).
+
+**기본 동작**:
+- yfinance가 OHLCV 5컬럼(flat)을 주는 mock 응답 → `PriceHistoryResponse.points[0]`에 5개 필드 모두 채워졌는지, `last_close`가 마지막 valid 행과 일치하는지.
 - 캐시 동작(첫 호출 yfinance 다운로드, 두 번째는 캐시 히트).
+
+**OHLC 정규화 회귀(critical)**:
+- Volume이 NaN인 행 → `volume=0`으로 정규화, 다른 필드는 그대로 보존.
+- Open/High/Low/Close 중 하나라도 NaN이거나 ±inf → 해당 행은 통째로 스킵(다른 행은 정상 포함).
+- 모든 행이 invalid → 빈 `points`, `last_close=None` 반환(예외 없음).
+- `last_close`가 마지막 invalid 행이 아니라 마지막 **valid** 행 기준임을 단위 테스트로 확인.
+
+**MultiIndex/교차오염 방어(critical)**:
+- flat 컬럼이지만 일부 컬럼(`df["Open"]`)이 다중 ticker DataFrame인 경우 — 요청 ticker 존재 시 해당 컬럼만 추출, 없으면 전체 폐기.
+- MultiIndex `(field, ticker)` 컬럼 입력 — 요청 ticker가 모든 OHLCV 필드에 존재 → 정상 추출.
+- MultiIndex 입력에서 요청 ticker가 누락 → 빈 응답, 다른 ticker 가격 누설 없음.
+- MultiIndex 입력에서 일부 필드(예: `Volume`)에만 요청 ticker가 누락 → 빈 응답(부분 데이터 거부).
 
 ### 7.2 프론트
 
-- `resample.ts` 단위 테스트: 일봉 30개 → 주/월 변환 OHLCV 정확성, 빈 입력, 단일 봉, 결손 데이터.
+- `resample.ts` 단위 테스트(§ 5.5 참고): `bucketKey` 일관성 + 일봉 30개 → 주/월 변환 OHLCV 정확성, 빈 입력, 단일 봉, 결손 데이터.
+- `alignSignals` 단위 테스트(§ 5.7 참고): 한 bucket에 신호 N개 → 최신 1개만 유지, date 필드가 bucket key로 교체됨, 일봉 모드는 항등.
 - `CandleChart` 시각 회귀: Playwright 스냅샷 1장(일봉 모드, 평단가 라인 포함, 마커 1개). 인터벌 탭 클릭 → 시리즈 갱신만 확인(픽셀 단위 비교는 불안정하므로 DOM 어설션 위주).
+- **마커 보존 회귀**: 일봉에서 N개 마커 → 주봉 클릭 → 마커가 0이 되지 않고 N 이하의 유의미한 수로 남는지 DOM 어설션. 한투 차트 대비 우리 시스템 핵심 차별점인 BUY/SELL 표시가 인터벌 전환에서 사라지는 회귀를 막는 것이 목적.
 - E2E(`web/tests/e2e/portfolio.spec.ts`): 차트가 렌더되고 인터벌 탭 전환이 에러 없이 동작.
 
 ## 8. 비범위 (Out of scope)
