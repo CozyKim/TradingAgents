@@ -20,9 +20,17 @@ def test_get_history_returns_points(monkeypatch):
 
     def fake_download(ticker, start, end, interval, progress=False, auto_adjust=True):
         captured["calls"] += 1
-        import pandas as pd
         idx = pd.to_datetime(["2026-04-21", "2026-04-22"])
-        return pd.DataFrame({"Close": [180.0, 181.5]}, index=idx)
+        return pd.DataFrame(
+            {
+                "Open":   [179.0, 180.0],
+                "High":   [181.0, 182.5],
+                "Low":    [178.5, 179.4],
+                "Close":  [180.0, 181.5],
+                "Volume": [10_000, 12_345],
+            },
+            index=idx,
+        )
 
     monkeypatch.setattr(svc, "_yf_download", fake_download)
 
@@ -32,7 +40,6 @@ def test_get_history_returns_points(monkeypatch):
     assert out.last_close == 181.5
     assert captured["calls"] == 1
 
-    # Second call within TTL window does not re-download.
     again = svc.get_price_history("AAPL", days=5)
     assert again.last_close == 181.5
     assert captured["calls"] == 1
@@ -49,22 +56,25 @@ def test_get_history_empty_returns_no_last_close(monkeypatch):
     assert out.last_close is None
 
 
-def _multi_close_frame(close_by_ticker: dict[str, list[float]]):
-    """Build a yfinance-style frame whose Close sub-frame has multiple ticker
-    columns — the shape that previously slipped past iloc[:, 0]."""
-    import pandas as pd
+def _multi_ohlcv_full(close_by_ticker: dict[str, list[float]]):
+    """OHLCV 전체가 (field, ticker) MultiIndex로 들어온 yfinance 응답 모방."""
     idx = pd.to_datetime(["2026-04-21", "2026-04-22"])
-    values = [list(col) for col in zip(*close_by_ticker.values(), strict=False)]
-    cols = pd.MultiIndex.from_product([["Close"], list(close_by_ticker)])
-    return pd.DataFrame(values, index=idx, columns=cols)
+    fields = ["Open", "High", "Low", "Close", "Volume"]
+    cols = pd.MultiIndex.from_product([fields, list(close_by_ticker)])
+    data = {}
+    for ticker, closes in close_by_ticker.items():
+        for f in fields:
+            offset = {"Open": -1, "High": +2, "Low": -2, "Close": 0, "Volume": 1_000}[f]
+            if f == "Volume":
+                data[(f, ticker)] = [int(c) + offset for c in closes]
+            else:
+                data[(f, ticker)] = [c + offset for c in closes]
+    return pd.DataFrame(data, index=idx, columns=cols)
 
 
 def test_get_history_picks_requested_ticker_from_multicolumn_frame(monkeypatch):
-    """Defense-in-depth: if yfinance leaks another ticker into our frame,
-    select the requested ticker's column rather than iloc[:, 0]."""
     def fake_download(*a, **kw):
-        # NFLX column comes first — iloc[:, 0] would have returned 88.27.
-        return _multi_close_frame({"NFLX": [87.5, 88.27], "GOOGL": [395.0, 397.1]})
+        return _multi_ohlcv_full({"NFLX": [87.5, 88.27], "GOOGL": [395.0, 397.1]})
 
     monkeypatch.setattr(svc, "_yf_download", fake_download)
     out = svc.get_price_history("GOOGL", days=5)
@@ -73,10 +83,8 @@ def test_get_history_picks_requested_ticker_from_multicolumn_frame(monkeypatch):
 
 
 def test_get_history_drops_frame_when_requested_ticker_missing(monkeypatch):
-    """If the requested ticker is absent from the leaked frame, return None
-    rather than caching another ticker's price under our key."""
     def fake_download(*a, **kw):
-        return _multi_close_frame({"NFLX": [87.5, 88.27]})
+        return _multi_ohlcv_full({"NFLX": [87.5, 88.27]})
 
     monkeypatch.setattr(svc, "_yf_download", fake_download)
     out = svc.get_price_history("GOOGL", days=5)
