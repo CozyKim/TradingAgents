@@ -234,8 +234,12 @@ async def _execute_turn(*, run_id: str, analysis_id: int, turn_id: str) -> None:
     final_message: AIMessage | None = None
 
     def _final_blocks() -> list[Any]:
-        if final_message is not None and isinstance(final_message.content, list):
-            return final_message.content
+        if final_message is not None:
+            c = final_message.content
+            if isinstance(c, list):
+                return c
+            if isinstance(c, str) and c.strip():
+                return [{"type": "text", "text": c}]
         if text_blocks:
             return [
                 {"type": "text", "text": text_blocks[i]}
@@ -264,8 +268,9 @@ async def _execute_turn(*, run_id: str, analysis_id: int, turn_id: str) -> None:
                 continue
             if ctype == "messages":
                 token, _ = data
+                # streaming chunk (Anthropic, OpenAI Chat Completions 등)
                 if isinstance(token, AIMessageChunk) and token.text:
-                    bi = 0  # MVP: 단일 텍스트 블록
+                    bi = 0
                     text_blocks[bi] = text_blocks.get(bi, "") + token.text
                     bus.publish(
                         channel,
@@ -274,6 +279,30 @@ async def _execute_turn(*, run_id: str, analysis_id: int, turn_id: str) -> None:
                             data={"text": token.text, "block_index": bi},
                         ),
                     )
+                # non-streaming provider (codex_oauth 등): 완성 AIMessage를 통째로 emit
+                elif isinstance(token, AIMessage):
+                    content = token.content
+                    text = (
+                        content
+                        if isinstance(content, str)
+                        else "".join(
+                            b.get("text", "")
+                            for b in content
+                            if isinstance(b, dict) and b.get("type") == "text"
+                        )
+                        if isinstance(content, list)
+                        else ""
+                    )
+                    if text:
+                        bi = 0
+                        text_blocks[bi] = text_blocks.get(bi, "") + text
+                        bus.publish(
+                            channel,
+                            AnalysisEvent(
+                                type="token",
+                                data={"text": text, "block_index": bi},
+                            ),
+                        )
             elif ctype == "updates":
                 for source, update in data.items():
                     # 일부 노드(middleware hook 등)는 None 또는 messages 키 없는 update를 yield
