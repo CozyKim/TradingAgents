@@ -8,6 +8,7 @@ grow unbounded. Each entry key is ``(TICKER, days)`` and value is
 from __future__ import annotations
 
 import logging
+import math
 import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -67,6 +68,20 @@ def _select_ticker_ohlcv(
         return out[list(OHLCV_FIELDS)]
 
     return None
+
+
+def _row_is_valid(row: pd.Series) -> bool:
+    """All OHLC fields must be finite. Volume may be NaN (treated as 0)."""
+    for f in ("Open", "High", "Low", "Close"):
+        v = row[f]
+        if not pd.notna(v):
+            return False
+        try:
+            if not math.isfinite(float(v)):
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
 
 
 _TTL_SECONDS = 300  # 5 minutes
@@ -131,25 +146,26 @@ def get_price_history(ticker: str, days: int = 90) -> PriceHistoryResponse:
 
     points: list[PricePoint] = []
     last_close: float | None = None
-    if df is not None and len(df) > 0 and "Close" in df.columns:
-        close_col = df["Close"]
-        # Defense-in-depth: if a future code path leaks a multi-ticker frame
-        # past the lock, prefer the requested ticker's column over a blind
-        # iloc[:, 0] that would silently return another ticker's data.
-        if hasattr(close_col, "columns"):
-            if key[0] in close_col.columns:
-                close_col = close_col[key[0]]
-            else:
-                logger.warning(
-                    "prices: Close column for %s missing from frame %s; "
-                    "discarding to avoid cross-ticker contamination",
-                    key[0], list(close_col.columns),
-                )
-                close_col = None
-        if close_col is not None:
-            for ts, val in close_col.items():
-                points.append(PricePoint(date=ts.date(), close=float(val)))
-            last_close = points[-1].close if points else None
+    sub = _select_ticker_ohlcv(df, key[0])
+    if sub is not None:
+        for ts, row in sub.iterrows():
+            if not _row_is_valid(row):
+                continue
+            vol_raw = row["Volume"]
+            try:
+                vol_finite = pd.notna(vol_raw) and math.isfinite(float(vol_raw))
+            except (TypeError, ValueError):
+                vol_finite = False
+            volume = int(float(vol_raw)) if vol_finite else 0
+            points.append(PricePoint(
+                date=ts.date(),
+                open=float(row["Open"]),
+                high=float(row["High"]),
+                low=float(row["Low"]),
+                close=float(row["Close"]),
+                volume=volume,
+            ))
+        last_close = points[-1].close if points else None
 
     response = PriceHistoryResponse(
         ticker=key[0],
