@@ -12,10 +12,62 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
+import pandas as pd
+
 from tradingagents.dataflows._yf_lock import YF_LOCK as _YF_LOCK
 from tradingagents_web.schemas.price import PriceHistoryResponse, PricePoint
 
 logger = logging.getLogger(__name__)
+
+OHLCV_FIELDS: tuple[str, ...] = ("Open", "High", "Low", "Close", "Volume")
+
+
+def _select_ticker_ohlcv(
+    df: pd.DataFrame | None, ticker: str
+) -> pd.DataFrame | None:
+    """Return a flat OHLCV frame for ``ticker``, or None if unrecoverable.
+
+    Handles two yfinance return shapes:
+      - flat columns: ["Open","High","Low","Close","Volume"]
+      - MultiIndex columns: [(field, ticker), ...]
+
+    Defense-in-depth against ``multi_level_index=False`` being silently
+    ignored or against multi-ticker frames leaking past the YF lock.
+    """
+    if df is None or len(df) == 0:
+        return None
+
+    # Case 2 (checked first): MultiIndex (field, ticker). Membership of top-
+    # level field names also passes the flat-column check below, so route
+    # MultiIndex frames here before the flat-column branch.
+    if isinstance(df.columns, pd.MultiIndex):
+        try:
+            sub = df.xs(ticker, axis=1, level=1, drop_level=True)
+        except KeyError:
+            logger.warning("prices: ticker %s not in MultiIndex frame", ticker)
+            return None
+        if not all(f in sub.columns for f in OHLCV_FIELDS):
+            return None
+        return sub[list(OHLCV_FIELDS)]
+
+    # Case 1: flat columns. Require the full OHLCV set.
+    if all(f in df.columns for f in OHLCV_FIELDS):
+        out = df
+        for f in OHLCV_FIELDS:
+            col = out[f]
+            if hasattr(col, "columns"):  # accessor returned a DataFrame
+                if ticker in col.columns:
+                    out = out.assign(**{f: col[ticker]})
+                else:
+                    logger.warning(
+                        "prices: %s missing from %s column for %s; aborting",
+                        ticker, f, list(col.columns),
+                    )
+                    return None
+        return out[list(OHLCV_FIELDS)]
+
+    return None
+
 
 _TTL_SECONDS = 300  # 5 minutes
 _CACHE: dict[tuple[str, int], tuple[float, PriceHistoryResponse]] = {}
