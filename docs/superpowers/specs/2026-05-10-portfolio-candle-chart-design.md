@@ -18,7 +18,7 @@
 1. **라이브러리**: TradingView Lightweight Charts(OSS). 캔들/거래량/크로스헤어/줌·팬을 자체 구현하지 않고 라이브러리 기본 동작에 위임.
 2. **인터벌 탭**: `일 / 주 / 월` 3개. 분봉/연봉은 비범위.
 3. **요소 구성**: 캔들 + 거래량 패널(20MA) + SMA 5/20/60/120 오버레이 + OHLC 헤더 + 우측 현재가 라벨 + BUY/SELL/HOLD 마커 + 평단가 라인.
-4. **기존 지표 토글 제거**: EMA / Bollinger / RSI / Stoch UI는 새 차트에서 빠진다. 코어 라이브러리 함수(`web/lib/indicators.ts`)는 보존(미래 재사용 + 평균선 계산 등에 일부 사용).
+4. **보조지표 토글 보존**: 기존 EMA / Bollinger / RSI / Stoch 토글을 그대로 유지하되 Lightweight Charts에 맞게 재구현. 스크린샷의 `+ 보조지표` 버튼처럼 우상단 `IndicatorToolbar`(팝오버)에서 켜고 끈다. EMA/Bollinger는 메인 차트 오버레이, RSI/Stoch는 하단 별도 pane(Lightweight Charts v5 panes API). 기존 `useChartSettings` 훅, `lib/chart-settings.ts`, `lib/indicators.ts`, `localStorage` 키는 그대로 재사용.
 5. **줌/팬**: Lightweight Charts 기본 동작(휠/드래그/더블클릭 리셋/터치 핀치)을 그대로 활성화.
 6. **백엔드 OHLCV 노출**: yfinance가 이미 주는 데이터를 스키마에 펴서 노출. 캐시 키/TTL은 유지.
 
@@ -164,16 +164,18 @@ pnpm --dir web add lightweight-charts
 ```
 components/portfolio/
 ├── candle-chart/
-│   ├── candle-chart.tsx       — 메인 컴포넌트. 차트 + 거래량 패널 + 오버레이 통합.
+│   ├── candle-chart.tsx       — 메인 컴포넌트. 차트 + 거래량 + 지표 pane 통합.
 │   ├── interval-tabs.tsx      — 일/주/월 탭.
 │   ├── ohlc-header.tsx        — 상단 시가/고가/저가/종가/% 표시.
-│   ├── resample.ts            — 일봉 → 주봉/월봉 변환.
-│   └── series-config.ts       — 색상/스타일 상수(다크/라이트 모드).
+│   ├── resample.ts            — 일봉 → 주봉/월봉 변환 + bucketKey 공유.
+│   ├── series-config.ts       — 색상/스타일 상수.
+│   └── series-builder.ts      — settings → Lightweight Charts series 매핑.
+├── indicator-toolbar.tsx      — (재사용, Lightweight Charts와 무관한 UI 컨트롤)
+├── indicator-colors.ts        — (보존, series-config가 일부 재사용)
 ├── price-chart.tsx            — (제거) 기존 라인차트.
-├── chart-stack.tsx            — (제거) 기존 래퍼.
-├── indicator-toolbar.tsx      — (제거)
-├── indicator-panel.tsx        — (제거)
-└── indicator-colors.ts        — (보존, 일부 색상은 series-config로 마이그레이션)
+├── chart-stack.tsx            — (제거) 기존 Recharts 래퍼.
+└── indicator-panel.tsx        — (제거) Recharts 전용 RSI/Stoch 패널. CandleChart의
+                                 pane 시스템이 같은 역할을 한다.
 ```
 
 ### 5.3 `CandleChart` 컴포넌트 인터페이스
@@ -184,13 +186,17 @@ interface CandleChartProps {
   signals?: SignalMarker[];        // BUY/SELL/HOLD 마커
   avgCost?: number;                // 평단가 라인
   initialInterval?: "1D" | "1W" | "1M";
+  settings: ChartSettings;         // useChartSettings에서 주입 — overlays/panels 토글 + 파라미터
+  onSettingsChange: (next: ChartSettings) => void;
+  onSettingsReset: () => void;
   height?: number;                 // 기본 480
 }
 ```
 
 내부 상태:
-- `interval` — 현재 선택 탭. 변경 시 `resample`로 시리즈 재계산, 줌 상태는 보존(`timeScale().getVisibleLogicalRange()`로 저장 후 새 데이터에 매핑하여 복원).
+- `interval` — 현재 선택 탭. 변경 시 `resample`로 시리즈 재계산, 줌 상태는 보존(`timeScale().getVisibleRange()`로 저장 후 시간 기반으로 복원).
 - `hovered` — 크로스헤어 위치의 OHLC. `chart.subscribeCrosshairMove`로 업데이트, OHLC 헤더에 표시.
+- 시리즈 핸들 맵 — `{ candle, sma5, sma20, sma60, sma120, ema?, bbMid?, bbUp?, bbLo?, vol, volMa, rsi?, stochK?, stochD? }`. settings 변경 시 켜진/꺼진 시리즈를 add/remove(전체 차트 재생성 X).
 
 ### 5.4 Lightweight Charts 구성
 
@@ -239,7 +245,36 @@ const candleSeries = chart.addCandlestickSeries({
 // 신호 마커 — candleSeries.setMarkers([{ time, position, shape, color, text }])
 ```
 
+**Panes 구성** (Lightweight Charts v5+ panes API 사용):
+```
+pane 0: 메인 — candle + SMA 4종 + (옵션) EMA + (옵션) BB upper/mid/lower
+pane 1: 거래량 — histogram + 20MA (priceScaleId: "vol", 높이 비중 ~25%)
+pane 2: RSI — line, 0~100 스케일, 30/70 reference lines (옵션, 토글 시 추가)
+pane 3: Stoch — %K/%D line, 0~100 스케일, 20/80 reference lines (옵션, 토글 시 추가)
+```
+모든 pane은 시간축을 공유하며 크로스헤어/줌이 동기화된다. 토글로 pane이 추가/제거되면 차트 컨테이너 높이를 동적으로 재계산(§ 5.4.1).
+
 다크 모드 전환은 비범위(프로젝트 전체가 라이트 모드 전제). 추후 다크 모드 도입 시 CSS 변수로 추출하고 `chart.applyOptions(...)`로 재적용한다.
+
+#### 5.4.1 보조지표 매핑 (`series-builder.ts`)
+
+`ChartSettings`(기존 타입 그대로)와 Lightweight Charts series를 잇는 어댑터 레이어. 각 토글이 켜질 때 시리즈 추가, 꺼질 때 `chart.removeSeries(handle)`. 토글된 시리즈만 dirty로 마크하므로 캔들/거래량은 재생성되지 않는다.
+
+| `ChartSettings` 토글 | Lightweight Charts 처리 |
+|---|---|
+| `overlays.sma.on` (period) | 메인 pane에 라인 4개 고정(5/20/60/120). period 슬라이더는 v1 단일 SMA 시절 잔재라 비활성화하고, 4종 토글로 단순화 — UX 단순화 정당화는 § 5.4.1.1. |
+| `overlays.ema.on` (period) | 메인 pane에 라인 1개. 색 `INDICATOR_COLORS.ema`. period 변경 시 시리즈 데이터만 재계산. |
+| `overlays.bollinger.on` (period, stddev) | 메인 pane에 라인 3개(`bbUp`/`bbMid`/`bbLo`), 점선/실선 구분은 기존 스타일 유지. |
+| `panels.rsi.on` (period) | 새 pane(`pane: 2`) 추가, 라인 1개 + reference lines(30/70). |
+| `panels.stoch.on` (k, slowing, d) | 새 pane(`pane: 3`) 추가, %K/%D 라인 + reference lines(20/80). |
+
+##### 5.4.1.1 SMA UX 단순화 (의도된 회귀)
+
+기존 v1은 SMA 한 줄(period 변경)이고 새 차트는 SMA 4줄 고정(5/20/60/120). 이는 **의도된 변경**이다 — 한투 차트와 같은 다중 MA가 시각적으로 더 강력하다. period 슬라이더는 IndicatorToolbar 팝오버에서 SMA 항목만 단일 토글(켜기/끄기)로 축소, period 입력 칸은 숨긴다. EMA는 단일 라인이 의미 있으므로 period 입력 유지. 이 결정은 `useChartSettings` v1→v2 마이그레이션을 강제하지 않는다(`overlays.sma.period`는 무시되고 `overlays.sma.on`만 사용 — localStorage 호환성 유지).
+
+##### 5.4.1.2 RSI/Stoch period 변경 시 pane 보존
+
+period 변경은 시리즈 데이터(`series.setData(...)`)만 갱신하고 pane은 그대로 둔다. 토글 off → on → off 사이클에서만 `addLineSeries` / `removeSeries`. 이는 줌/크로스헤어 상태가 깜빡이지 않게 하는 데 중요하다.
 
 ### 5.5 일봉 → 주봉/월봉 리샘플링 (`resample.ts`)
 
@@ -338,13 +373,25 @@ chart.timeScale().setVisibleLogicalRange(range);
 
 변경:
 - `usePriceHistory(ticker, 90)` → `usePriceHistory(ticker, 365)`.
-- `<ChartStack ... />` → `<CandleChart points={price?.points ?? []} signals={signals} avgCost={holding?.avg_cost} />`.
-- `useChartSettings`/`reset` 호출 제거.
+- `<ChartStack ... />` → `<CandleChart ... />`. `useChartSettings` 훅 호출은 유지하고 settings/onChange/onReset를 그대로 전달:
+  ```tsx
+  const { settings, setSettings, reset } = useChartSettings();
+  // ...
+  <CandleChart
+    points={price?.points ?? []}
+    signals={signals}
+    avgCost={holding?.avg_cost}
+    settings={settings}
+    onSettingsChange={setSettings}
+    onSettingsReset={reset}
+  />
+  ```
 - 카드 헤더 "Price (90d)" → "Price".
 
 ## 6. 호환성/마이그레이션
 
-- `useChartSettings` 훅과 `lib/chart-settings.ts`: 새 차트가 사용하지 않음. 다른 화면이 사용하지 않는다면 함께 삭제(검색 후 결정). `localStorage` 키도 정리.
+- `useChartSettings` 훅과 `lib/chart-settings.ts`: **그대로 재사용**. `series-builder`가 같은 ChartSettings 타입을 입력으로 받는다. localStorage 키(`portfolio.chartSettings.v1` 또는 유사)도 유지 — 사용자가 켜놨던 토글이 새 차트에서도 유지됨.
+- SMA period 필드(§ 5.4.1.1): 무시되지만 schema는 유지(타입 호환성). 추후 v2로 정리 시 마이그레이션.
 - `web/components/dashboard/portfolio-signals.tsx`: 별도 컴포넌트 — 영향 없음.
 - 테스트: `tests/web/test_runner_fake.py` 등 백엔드 테스트는 PricePoint 변경에 영향. 픽스처/모킹 업데이트 필요.
 
@@ -376,7 +423,9 @@ chart.timeScale().setVisibleLogicalRange(range);
 - `alignSignals` 단위 테스트(§ 5.7 참고): 한 bucket에 신호 N개 → 최신 1개만 유지, date 필드가 bucket key로 교체됨, 일봉 모드는 항등.
 - `CandleChart` 시각 회귀: Playwright 스냅샷 1장(일봉 모드, 평단가 라인 포함, 마커 1개). 인터벌 탭 클릭 → 시리즈 갱신만 확인(픽셀 단위 비교는 불안정하므로 DOM 어설션 위주).
 - **마커 보존 회귀**: 일봉에서 N개 마커 → 주봉 클릭 → 마커가 0이 되지 않고 N 이하의 유의미한 수로 남는지 DOM 어설션. 한투 차트 대비 우리 시스템 핵심 차별점인 BUY/SELL 표시가 인터벌 전환에서 사라지는 회귀를 막는 것이 목적.
-- E2E(`web/tests/e2e/portfolio.spec.ts`): 차트가 렌더되고 인터벌 탭 전환이 에러 없이 동작.
+- **보조지표 토글 회귀**: RSI 토글 on → pane 추가, off → pane 제거. EMA 토글 on/off에서 메인 pane의 다른 시리즈(캔들/SMA)는 재생성되지 않음(시리즈 핸들 동일성 어설션 또는 visual snapshot diff).
+- **localStorage 호환성**: 기존 `useChartSettings` 값이 저장된 상태에서 새 차트 마운트 → 저장된 토글 상태가 그대로 적용되는지 확인.
+- E2E(`web/tests/e2e/portfolio.spec.ts`): 차트가 렌더되고 인터벌 탭 전환이 에러 없이 동작, 보조지표 팝오버에서 RSI 토글 on/off가 즉시 반영.
 
 ## 8. 비범위 (Out of scope)
 
@@ -384,25 +433,28 @@ chart.timeScale().setVisibleLogicalRange(range);
 - 그리기 도구(추세선/피보나치 등).
 - 종목 비교(여러 ticker 오버레이).
 - 차트 풀스크린 모달.
-- 보조지표 토글(EMA/Bollinger/RSI/Stoch UI 복귀) — 코어 함수는 보존하되 UI는 빠진다. 사용자가 다시 원할 경우 별도 PR로 부활.
+- 다크 모드 차트 테마.
 - 실시간 가격 업데이트(WebSocket/폴링).
+- `ChartSettings` 스키마 v2 마이그레이션(SMA period 필드 정리는 추후).
 
 ## 9. 작업 순서(개략)
 
-1. **백엔드 OHLCV** — `schemas/price.py` + `services/prices.py` 수정 + 테스트 갱신.
+1. **백엔드 OHLCV** — `schemas/price.py` + `services/prices.py` 수정 + 테스트 갱신(NaN/MultiIndex 회귀 포함).
 2. **프론트 의존성** — `lightweight-charts` 추가, `lib/prices.ts`의 `PricePoint` 타입 동기화.
-3. **`resample.ts`** — 단위 테스트 우선 작성 후 구현.
+3. **`resample.ts` + `bucketKey`** — 단위 테스트 우선 작성 후 구현.
 4. **`CandleChart` 골격** — 캔들 + 거래량만 먼저, 인터벌 일 고정.
 5. **인터벌 탭 + 줌 보존** — 주/월 리샘플링 연결.
 6. **OHLC 헤더 + 크로스헤어 동기화**.
 7. **SMA 4종 + 거래량 20MA**.
-8. **신호 마커 + 평단가 라인**.
-9. **페이지 통합 + 기존 컴포넌트 제거**.
-10. **시각/E2E 회귀 테스트**.
+8. **신호 마커(`alignSignals` 포함) + 평단가 라인**.
+9. **`series-builder` + IndicatorToolbar 재연결** — EMA → Bollinger → RSI pane → Stoch pane 순.
+10. **페이지 통합 + 기존 Recharts 컴포넌트 제거**.
+11. **시각/E2E 회귀 테스트**.
 
 ## 10. 위험·열린 질문
 
 - **번들 크기**: 약 50KB 추가. 포트폴리오 상세에서만 필요하므로 `next/dynamic`으로 lazy-load 검토(SSR 비활성).
+- **Lightweight Charts panes API 버전**: pane 인자(`{ pane: 1 }`)는 v5+에서 정식 지원. v4를 받으면 multi-priceScale 트릭으로 폴백 가능하지만 코드 복잡도가 늘어난다. `package.json`에 `lightweight-charts: ^5` 명시 필요.
 - **연 1회 yfinance 변경**: 컬럼명/멀티인덱스 변경 사례가 과거에 있었음. 코드는 이미 멀티컬럼 방어가 있고 새 코드도 동일 구조 따른다.
 - **거래량이 0인 종목**: 일부 펀드/ETF는 거래량 NaN/0. 기본값 0으로 안전.
 - **`PricePoint` 타입 호환성**: `web/lib/prices.ts`의 프론트 타입이 백엔드와 함께 변경된다. 이 타입을 import하는 다른 위치(`useHoldings`, `dashboard/portfolio-signals`, `lib/indicators` 호출부 등)는 `close` 필드만 사용하므로 영향 없을 가능성이 높지만, 빌드 단계에서 확인.
