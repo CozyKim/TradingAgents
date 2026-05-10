@@ -103,7 +103,9 @@ export default function PortfolioDetail() {
         <CardHeader>
           <CardTitle>Price</CardTitle>
         </CardHeader>
-        <CardContent>
+        {/* 가격축이 카드 우측 패딩 안쪽에 같이 있으면 차트가 좁아 보인다.
+            우측 패딩을 줄여 캔들 그림 영역을 가로로 확장. */}
+        <CardContent className="pr-1">
           {priceLoading ? (
             <div
               className="h-64 animate-pulse rounded-md border border-border-1 bg-bg-2/40"
