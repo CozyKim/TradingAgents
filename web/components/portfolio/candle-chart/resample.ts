@@ -1,4 +1,5 @@
 import { startOfISOWeek, format, parseISO } from "date-fns";
+import type { PricePoint } from "@/lib/prices";
 
 export type Interval = "1D" | "1W" | "1M";
 
@@ -17,4 +18,42 @@ export function bucketKey(date: string, interval: Interval): string {
   }
   // "1M"
   return date.slice(0, 7) + "-01";
+}
+
+/**
+ * 일봉 시리즈를 주봉 또는 월봉으로 압축. 시간순 정렬된 입력을 가정한다.
+ */
+export function resample(daily: PricePoint[], interval: Interval): PricePoint[] {
+  if (interval === "1D") return daily;
+  if (daily.length === 0) return [];
+
+  type Acc = {
+    date: string;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+  };
+  const buckets = new Map<string, Acc>();
+  for (const p of daily) {
+    const key = bucketKey(p.date, interval);
+    const acc = buckets.get(key);
+    if (!acc) {
+      buckets.set(key, {
+        date: key,
+        open: p.open,
+        high: p.high,
+        low: p.low,
+        close: p.close,
+        volume: p.volume,
+      });
+    } else {
+      acc.high = Math.max(acc.high, p.high);
+      acc.low = Math.min(acc.low, p.low);
+      acc.close = p.close;
+      acc.volume += p.volume;
+    }
+  }
+  return [...buckets.values()];
 }
