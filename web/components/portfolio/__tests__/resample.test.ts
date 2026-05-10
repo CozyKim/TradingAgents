@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { bucketKey, resample } from "../candle-chart/resample";
+import { bucketKey, resample, alignSignals } from "../candle-chart/resample";
 import type { PricePoint } from "@/lib/prices";
+import type { SignalMarker } from "@/components/portfolio/price-chart";
 
 const mk = (d: string, o: number, h: number, l: number, c: number, v: number): PricePoint =>
   ({ date: d, open: o, high: h, low: l, close: c, volume: v });
@@ -81,5 +82,40 @@ describe("resample", () => {
     expect(out).toEqual([
       { date: "2026-04-01", open: 100, high: 120, low: 99, close: 118, volume: 600 },
     ]);
+  });
+});
+
+const sig = (date: string, decision: SignalMarker["decision"], close: number): SignalMarker =>
+  ({ date, decision, close });
+
+describe("alignSignals", () => {
+  it("1D returns input unchanged", () => {
+    const s = [sig("2026-04-22", "BUY", 100)];
+    expect(alignSignals(s, "1D")).toEqual(s);
+  });
+
+  it("1W remaps date to the ISO Monday", () => {
+    const out = alignSignals([sig("2026-04-22", "BUY", 100)], "1W");
+    expect(out).toEqual([{ date: "2026-04-20", decision: "BUY", close: 100 }]);
+  });
+
+  it("collapses multiple signals in one bucket to the first (most recent)", () => {
+    // 입력은 created_at DESC 정렬 가정 — 첫 번째가 최신.
+    const input = [
+      sig("2026-04-24", "SELL", 110),
+      sig("2026-04-22", "BUY", 100),
+      sig("2026-04-20", "HOLD", 95),
+    ];
+    const out = alignSignals(input, "1W");
+    expect(out).toEqual([{ date: "2026-04-20", decision: "SELL", close: 110 }]);
+  });
+
+  it("preserves separate buckets across weeks", () => {
+    const input = [
+      sig("2026-04-27", "BUY", 120),
+      sig("2026-04-22", "SELL", 110),
+    ];
+    const out = alignSignals(input, "1W");
+    expect(out.map((s) => s.date).sort()).toEqual(["2026-04-20", "2026-04-27"]);
   });
 });

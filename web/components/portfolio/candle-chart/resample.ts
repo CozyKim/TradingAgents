@@ -1,5 +1,6 @@
 import { startOfISOWeek, format, parseISO } from "date-fns";
 import type { PricePoint } from "@/lib/prices";
+import type { SignalMarker } from "@/components/portfolio/price-chart";
 
 export type Interval = "1D" | "1W" | "1M";
 
@@ -56,4 +57,24 @@ export function resample(daily: PricePoint[], interval: Interval): PricePoint[] 
     }
   }
   return [...buckets.values()];
+}
+
+/**
+ * 신호 마커의 date를 인터벌 bucket key로 리맵.
+ *
+ * 한 bucket에 신호가 여러 개면 입력 순서상 첫 번째(가장 최신)만 유지한다.
+ * 이는 page.tsx에서 created_at DESC 정렬 + seenDates 정책과 일관된다.
+ */
+export function alignSignals(
+  signals: SignalMarker[],
+  interval: Interval,
+): SignalMarker[] {
+  if (interval === "1D") return signals;
+  const seen = new Map<string, SignalMarker>();
+  for (const s of signals) {
+    const key = bucketKey(s.date, interval);
+    if (seen.has(key)) continue;
+    seen.set(key, { ...s, date: key });
+  }
+  return [...seen.values()];
 }
