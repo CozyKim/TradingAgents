@@ -23,6 +23,11 @@ import { CHART } from "./series-config";
 import { IntervalTabs } from "./interval-tabs";
 import { OhlcHeader } from "./ohlc-header";
 import { resample, bucketKey, alignSignals, type Interval } from "./resample";
+import {
+  syncOptionalSeries,
+  type OptionalSeries,
+  EMPTY_OPTIONAL,
+} from "./series-builder";
 
 const MARKER_STYLE: Record<
   SignalMarker["decision"],
@@ -54,6 +59,7 @@ export function CandleChart({
   points,
   signals = [],
   avgCost,
+  settings,
   height = 480,
 }: CandleChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -67,6 +73,7 @@ export function CandleChart({
   const sma120Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const avgCostLineRef = useRef<IPriceLine | null>(null);
+  const optionalRef = useRef<OptionalSeries>({ ...EMPTY_OPTIONAL });
 
   const [interval, setIntervalState] = useState<Interval>("1D");
   const [hovered, setHovered] = useState<PricePoint | null>(null);
@@ -186,6 +193,7 @@ export function CandleChart({
       sma120Ref.current = null;
       markersRef.current = null;
       avgCostLineRef.current = null;
+      optionalRef.current = { ...EMPTY_OPTIONAL };
     };
   }, []);
 
@@ -293,6 +301,18 @@ export function CandleChart({
       title: "Avg",
     });
   }, [avgCost]);
+
+  // 옵션 시리즈(EMA/Bollinger/RSI/Stoch) — settings 토글에 따라 add/remove.
+  // 캔들·SMA·거래량은 본 effect와 무관하므로 깜빡이지 않음.
+  useEffect(() => {
+    if (!chartRef.current) return;
+    optionalRef.current = syncOptionalSeries(
+      chartRef.current,
+      series,
+      settings,
+      optionalRef.current,
+    );
+  }, [series, settings]);
 
   const handleIntervalChange = (next: Interval) => {
     const range = chartRef.current?.timeScale().getVisibleRange();
