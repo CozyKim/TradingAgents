@@ -351,7 +351,39 @@ export function CandleChart({
           />
         </div>
       </div>
-      <div ref={containerRef} style={{ height, width: "100%" }} />
+      <div className="relative" style={{ width: "100%" }}>
+        <div ref={containerRef} style={{ height, width: "100%" }} />
+        {/* RSI/Stoch pane 좌측 상단에 작은 범례 라벨.
+            Lightweight Charts pane 자체에는 제목 슬롯이 없어서 chart 컨테이너 위에
+            absolute로 띄운다. y 위치는 PANE_HEIGHT 합으로 계산. */}
+        {settings.panels.rsi.on && (
+          <PaneLabel
+            top={PANE_HEIGHT.candle + PANE_HEIGHT.volume}
+            text={`RSI ${settings.panels.rsi.period}`}
+          />
+        )}
+        {settings.panels.stoch.on && (
+          <PaneLabel
+            top={
+              PANE_HEIGHT.candle +
+              PANE_HEIGHT.volume +
+              (settings.panels.rsi.on ? PANE_HEIGHT.rsi : 0)
+            }
+            text={`Stoch ${settings.panels.stoch.k} ${settings.panels.stoch.slowing} ${settings.panels.stoch.d}`}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PaneLabel({ top, text }: { top: number; text: string }) {
+  return (
+    <div
+      className="pointer-events-none absolute z-10 rounded-sm bg-bg-1/85 px-1.5 py-0.5 font-mono text-2xs text-text-2"
+      style={{ top: top + 4, left: 8 }}
+    >
+      {text}
     </div>
   );
 }

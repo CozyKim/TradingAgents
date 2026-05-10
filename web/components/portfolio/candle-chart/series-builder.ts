@@ -187,6 +187,21 @@ export function syncOptionalSeries(
       );
       // 메인 pane 크기를 유지하기 위해 RSI pane도 픽셀-비율 stretch factor로 고정.
       next.rsi.getPane().setStretchFactor(PANE_HEIGHT.rsi);
+      // 과매수/과매도 기준선 (70 / 30) — 시각적 anchor 역할도 한다.
+      next.rsi.createPriceLine({
+        price: 70,
+        color: CHART.threshold,
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: false,
+      });
+      next.rsi.createPriceLine({
+        price: 30,
+        color: CHART.threshold,
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: false,
+      });
     }
     setLine(next.rsi, rsi(closes, settings.panels.rsi.period), times);
   } else if (next.rsi) {
@@ -216,6 +231,21 @@ export function syncOptionalSeries(
         },
         STOCH_PANE,
       );
+      // 과매수/과매도 기준선 (80 / 20).
+      next.stochK.createPriceLine({
+        price: 80,
+        color: CHART.threshold,
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: false,
+      });
+      next.stochK.createPriceLine({
+        price: 20,
+        color: CHART.threshold,
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: false,
+      });
     }
     // Lightweight Charts v5: 요청한 paneIndex가 기존 페인 수보다 크면 라이브러리가
     // 새 페인을 생성/클램프할 수 있다. %K가 실제로 안착한 페인 인덱스를 다시 읽어와
