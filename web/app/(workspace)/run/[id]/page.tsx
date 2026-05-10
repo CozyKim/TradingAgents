@@ -86,12 +86,17 @@ export default function RunLivePage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-[1fr_2fr]">
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>진행 상태</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3">
-            <ProgressGauge step={stream.step} total={stream.total} />
+            <ProgressGauge
+              step={stream.step}
+              total={stream.total}
+              phase={stream.phase}
+              phaseLabel={stream.phaseLabel}
+            />
             {stream.error && (
               <p className="text-[12.5px] font-semibold text-signal-sell">
                 {stream.error}
@@ -110,7 +115,7 @@ export default function RunLivePage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader className="flex flex-row items-center justify-between gap-3">
             <CardTitle>에이전트 스트림</CardTitle>
             <select
@@ -127,7 +132,7 @@ export default function RunLivePage() {
               <option value="plain">일반 텍스트</option>
             </select>
           </CardHeader>
-          <CardContent className="grid max-h-[60vh] gap-2.5 overflow-y-auto">
+          <CardContent className="grid max-h-[60vh] min-w-0 gap-2.5 overflow-y-auto overflow-x-hidden">
             {stream.messages.length === 0 &&
               (terminalStatus ? (
                 <p className="text-[13px] text-text-3">분석이 완료되었어요.</p>

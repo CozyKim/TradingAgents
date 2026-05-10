@@ -218,6 +218,15 @@ cd web && npm run e2e
 - 하단 탭바의 `/more` 링크가 신규 `web/app/(workspace)/more/page.tsx`로 연결된다 — History/Schedules/Notifications/Account 카드 리스트 + Logout 버튼.
 - 사이드바 System 섹션도 Notifications + Account 두 항목으로 확장.
 
+### Confidence 채점 (LLM-as-judge)
+
+- `RealRunner`는 LangGraph stream 종료 후 별도의 LLM 호출로 결정에 대한 신뢰도를 [0, 1] 사이 점수로 채점한다 — `tradingagents_web/services/runner.py::_llm_confidence_judge`.
+- judge는 `request.llm_quick_model`을 그대로 재사용하므로 추가 인증/단가 설정 없이 동작한다. 비용은 분석당 **quick 모델 호출 1회 추가**.
+- 실패 시 항상 `confidence=None`으로 폴백하며 분석 흐름은 절대 중단되지 않는다(파싱 실패·LLM 예외·타임아웃 모두 None).
+- 입력 텍스트는 `final_trade_decision` / `trader_investment_plan` / `investment_plan` / `risk_debate_state` 발췌(섹션당 cap)로 구성. 출력은 `{"confidence": float, "rationale": str}` JSON 강제.
+- 비활성: `WEB_CONFIDENCE_JUDGE=false` 환경변수. 끄면 즉시 None 반환(LLM 호출 자체를 안 함). 테스트는 `RealRunner(bus, judge=...)`로 임의 채점기를 주입할 수 있다.
+- 이 점수는 M4 알림(`confidence_change`, threshold 기본 0.10)의 입력으로 직결된다 — 이전엔 항상 None이라 발화하지 않던 알림이 이제 정상 동작한다.
+
 ### 주의
 
 - 복원 endpoint(`POST /api/settings/account/restore`)는 라이브 DB를 교체하므로 운영에서는 사전 백업을 항상 권장. 실패 시 staging 파일을 자동 정리하지만 디스크가 가득 차면 staging이 남을 수 있으므로 `<data_dir>/restore.staging.db`가 있는지 점검 가능.

@@ -12,6 +12,8 @@ export interface RunStreamState {
   messages: AgentMessage[];
   step: number;
   total: number;
+  phase: string | null;
+  phaseLabel: string | null;
   done: boolean;
   decision: string | null;
   confidence: number | null;
@@ -23,6 +25,8 @@ const init: RunStreamState = {
   messages: [],
   step: 0,
   total: 0,
+  phase: null,
+  phaseLabel: null,
   done: false,
   decision: null,
   confidence: null,
@@ -33,7 +37,13 @@ const init: RunStreamState = {
 type Action =
   | { kind: "reset" }
   | { kind: "msg"; payload: AgentMessage }
-  | { kind: "progress"; step: number; total: number }
+  | {
+      kind: "progress";
+      step: number;
+      total: number;
+      phase: string | null;
+      phaseLabel: string | null;
+    }
   | { kind: "done"; decision: string | null; confidence: number | null }
   | { kind: "error"; message: string }
   | { kind: "cancelled" };
@@ -45,7 +55,13 @@ function reducer(s: RunStreamState, a: Action): RunStreamState {
     case "msg":
       return { ...s, messages: [...s.messages, a.payload] };
     case "progress":
-      return { ...s, step: a.step, total: a.total || s.total };
+      return {
+        ...s,
+        step: a.step,
+        total: a.total || s.total,
+        phase: a.phase ?? s.phase,
+        phaseLabel: a.phaseLabel ?? s.phaseLabel,
+      };
     case "done":
       return { ...s, done: true, decision: a.decision, confidence: a.confidence };
     case "error":
@@ -73,8 +89,19 @@ export function useRunStream(runId: string | undefined): RunStreamState {
             payload: { role: d.role ?? "agent", text: d.text ?? "", seq },
           });
         } else if (type === "progress") {
-          const d = data as { step?: number; total?: number };
-          dispatch({ kind: "progress", step: d.step ?? 0, total: d.total ?? 0 });
+          const d = data as {
+            step?: number;
+            total?: number;
+            phase?: string;
+            phase_label?: string;
+          };
+          dispatch({
+            kind: "progress",
+            step: d.step ?? 0,
+            total: d.total ?? 0,
+            phase: d.phase ?? null,
+            phaseLabel: d.phase_label ?? null,
+          });
         } else if (type === "done") {
           const d = data as { decision?: string | null; confidence?: number | null };
           dispatch({

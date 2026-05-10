@@ -3,18 +3,91 @@
 The runner consumes a RunRequest, emits AnalysisEvents on the bus, and returns a
 RunResult capturing the final state. The API layer persists the result to DB.
 """
+
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import math
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Protocol
+from typing import Any, Awaitable, Callable, Protocol
 
 from tradingagents_web.services.event_bus import AnalysisEvent, EventBus
 
 logger = logging.getLogger(__name__)
+
+ConfidenceJudge = Callable[["RunRequest", dict[str, Any]], Awaitable[float | None]]
+
+
+PHASE_ORDER: tuple[str, ...] = ("analyst", "research", "trader", "risk")
+PHASE_LABELS: dict[str, str] = {
+    "analyst": "애널리스트 분석",
+    "research": "리서치 토론",
+    "trader": "트레이더 결정",
+    "risk": "리스크 검토",
+}
+PHASE_TOTAL: int = len(PHASE_ORDER)
+
+_NODE_TO_PHASE: dict[str, str] = {
+    "Market Analyst": "analyst",
+    "Social Analyst": "analyst",
+    "News Analyst": "analyst",
+    "Fundamentals Analyst": "analyst",
+    "Bull Researcher": "research",
+    "Bear Researcher": "research",
+    "Research Manager": "research",
+    "Trader": "trader",
+    "Aggressive Analyst": "risk",
+    "Neutral Analyst": "risk",
+    "Conservative Analyst": "risk",
+    "Portfolio Manager": "risk",
+}
+
+
+def _phase_for_node(node: str) -> str | None:
+    """Map a LangGraph node name to its analysis phase.
+
+    Phases (analyst → research → trader → risk) collapse the granular
+    ToolNode/Msg-Clear iterations of each agent into a single user-facing
+    progress step, so the UI shows 4 deterministic stages instead of an
+    ever-growing N/N counter.
+
+    Args:
+        node: Node name as emitted by LangGraph stream chunks.
+
+    Returns:
+        One of ``"analyst" | "research" | "trader" | "risk"``, or ``None``
+        if the node is unrecognised (callers should ignore in that case).
+    """
+    if node in _NODE_TO_PHASE:
+        return _NODE_TO_PHASE[node]
+    if node.startswith("tools_") or node.startswith("Msg Clear "):
+        return "analyst"
+    return None
+
+
+def _progress_payload(phase: str) -> dict[str, Any]:
+    """Build the SSE ``progress`` event payload for a phase transition.
+
+    Args:
+        phase: Phase key (must be in :data:`PHASE_ORDER`).
+
+    Returns:
+        Payload dict with ``step``/``total`` (kept for backwards compat with
+        the existing UI gauge) plus ``phase``/``phase_label`` for the new
+        phase-based progress display.
+    """
+    index = PHASE_ORDER.index(phase) + 1
+    return {
+        "step": index,
+        "total": PHASE_TOTAL,
+        "phase": phase,
+        "phase_label": PHASE_LABELS[phase],
+    }
 
 
 @dataclass
@@ -50,9 +123,10 @@ class RunResult:
 
     Attributes:
         decision: Final trade decision string (e.g. "BUY", "SELL", "HOLD").
-        confidence: Confidence score in [0, 1], or None if not captured.
+        confidence: Confidence score in [0, 1], or None if the judge was
+            disabled, the LLM call failed, or the response was unparseable.
         final_state: Full LangGraph final state dict (or fake equivalent).
-        cost_usd: Estimated API cost in USD, or None (tracked in M5+).
+        cost_usd: Estimated API cost in USD, or None (not yet tracked).
     """
 
     decision: str | None
@@ -117,22 +191,26 @@ class FakeRunner:
             RunResult with decision="BUY" and confidence=0.78.
         """
         rid = request.run_id
-        # (role, text_template) — {tk} is substituted with ticker
-        steps = [
-            ("market", "Fake market report for {tk}"),
-            ("social", "Fake social sentiment for {tk}"),
-            ("news", "Fake news summary for {tk}"),
-            ("fundamentals", "Fake fundamentals for {tk}"),
-            ("research", "Bull/Bear debate concluded — buy thesis stronger"),
-            ("trader", "Recommend BUY with conviction 0.78"),
-            ("risk", "Risk team aligned: BUY"),
+        # (role, phase, text_template) — {tk} is substituted with ticker
+        steps: list[tuple[str, str, str]] = [
+            ("market", "analyst", "Fake market report for {tk}"),
+            ("social", "analyst", "Fake social sentiment for {tk}"),
+            ("news", "analyst", "Fake news summary for {tk}"),
+            ("fundamentals", "analyst", "Fake fundamentals for {tk}"),
+            (
+                "research",
+                "research",
+                "Bull/Bear debate concluded — buy thesis stronger",
+            ),
+            ("trader", "trader", "Recommend BUY with conviction 0.78"),
+            ("risk", "risk", "Risk team aligned: BUY"),
         ]
         # Keep analyst-specific steps that were requested, plus fixed closing steps
         active = [s for s in steps if s[0] in request.analysts] + steps[-3:]
-        total = len(active)
 
         try:
-            for i, (role, text) in enumerate(active, start=1):
+            current_phase: str | None = None
+            for role, phase, text in active:
                 self.bus.publish(
                     rid,
                     AnalysisEvent(
@@ -140,13 +218,15 @@ class FakeRunner:
                         data={"role": role, "text": text.format(tk=request.ticker)},
                     ),
                 )
-                self.bus.publish(
-                    rid,
-                    AnalysisEvent(
-                        type="progress",
-                        data={"step": i, "total": total},
-                    ),
-                )
+                if phase != current_phase:
+                    current_phase = phase
+                    self.bus.publish(
+                        rid,
+                        AnalysisEvent(
+                            type="progress",
+                            data=_progress_payload(phase),
+                        ),
+                    )
                 if self.delay:
                     await asyncio.sleep(self.delay)
 
@@ -185,16 +265,26 @@ class RealRunner:
     Uses ``asyncio.to_thread`` to run the synchronous LangGraph stream
     off the event loop so it does not block async handlers.
 
-    Note:
-        ``confidence`` is always None in this implementation. Cost/token
-        tracking is deferred to M5.
+    After the graph completes, an LLM-as-judge step is invoked to score
+    the run's confidence in [0, 1]. The judge is a separate, isolated
+    LLM call (see :func:`_llm_confidence_judge`) and any failure results
+    in ``confidence=None`` without affecting the main run. Disable
+    globally via ``WEB_CONFIDENCE_JUDGE=false``.
 
     Args:
         bus: The EventBus to publish events to.
+        judge: Optional confidence judge override. Defaults to
+            :func:`_llm_confidence_judge`. Tests inject stubs here.
     """
 
-    def __init__(self, bus: EventBus) -> None:
+    def __init__(
+        self,
+        bus: EventBus,
+        *,
+        judge: ConfidenceJudge | None = None,
+    ) -> None:
         self.bus = bus
+        self.judge: ConfidenceJudge = judge or _llm_confidence_judge
 
     async def run(self, request: RunRequest) -> RunResult:
         """Stream the TradingAgentsGraph and emit events for each node output.
@@ -225,7 +315,6 @@ class RealRunner:
 
         rid = request.run_id
         loop = asyncio.get_running_loop()
-        estimated_total = _estimate_total_steps(request, config)
 
         def _publish_threadsafe(event: AnalysisEvent) -> None:
             """Schedule a bus.publish on the event loop from a worker thread."""
@@ -247,10 +336,9 @@ class RealRunner:
             stream_args["stream_mode"] = "updates"
 
             accumulated: dict[str, Any] = dict(init_state)
-            step = 0
+            current_phase: str | None = None
             for chunk in graph_obj.graph.stream(init_state, **stream_args):
                 # updates mode: chunk is {node_name: state_delta}
-                step += 1
                 for node, delta in chunk.items():
                     if isinstance(delta, dict):
                         accumulated.update(delta)
@@ -262,12 +350,15 @@ class RealRunner:
                                 data={"role": node, "text": text},
                             ),
                         )
-                _publish_threadsafe(
-                    AnalysisEvent(
-                        type="progress",
-                        data={"step": step, "total": max(estimated_total, step)},
-                    ),
-                )
+                    phase = _phase_for_node(node)
+                    if phase is not None and phase != current_phase:
+                        current_phase = phase
+                        _publish_threadsafe(
+                            AnalysisEvent(
+                                type="progress",
+                                data=_progress_payload(phase),
+                            ),
+                        )
 
             return accumulated
 
@@ -277,22 +368,26 @@ class RealRunner:
             decision = _extract_decision(decision_text)
             safe_final_state = _json_safe_final_state(final_state)
 
+            confidence = await _safe_judge(self.judge, request, final_state)
+
             # This publish is on the event-loop thread, so call directly.
             self.bus.publish(
                 rid,
                 AnalysisEvent(
                     type="done",
-                    data={"decision": decision, "confidence": None},
+                    data={"decision": decision, "confidence": confidence},
                 ),
             )
             return RunResult(
                 decision=decision,
-                confidence=None,
+                confidence=confidence,
                 final_state=safe_final_state,
             )
         except Exception as exc:
             logger.exception("Real runner failed for run_id=%s", rid)
-            self.bus.publish(rid, AnalysisEvent(type="error", data={"message": str(exc)}))
+            self.bus.publish(
+                rid, AnalysisEvent(type="error", data={"message": str(exc)})
+            )
             raise
         finally:
             self.bus.finish(rid)
@@ -326,49 +421,6 @@ def _summarize_delta(delta: Any) -> str:
         if delta.get(key):
             return f"[{key}] {str(delta[key])[:4000]}"
     return ""
-
-
-def _estimate_total_steps(request: RunRequest, config: dict[str, Any]) -> int:
-    """Estimate the minimum number of graph stream updates for progress UI.
-
-    The real LangGraph can emit extra updates when analyst tool loops run, so
-    this is intentionally a lower-bound estimate rather than an exact promise.
-    The caller clamps the total upward if actual streamed steps exceed it.
-
-    Args:
-        request: Run request containing selected analysts and debate rounds.
-        config: Effective TradingAgents graph configuration.
-
-    Returns:
-        Positive estimated total step count for progress events.
-    """
-    analyst_steps = max(1, len(request.analysts)) * 2
-    debate_rounds = _positive_int(
-        config.get("max_debate_rounds"), default=request.debate_rounds
-    )
-    risk_rounds = _positive_int(config.get("max_risk_discuss_rounds"), default=1)
-
-    research_steps = (2 * debate_rounds) + 1  # bull/bear turns + manager
-    trader_steps = 1
-    risk_steps = (3 * risk_rounds) + 1  # aggressive/conservative/neutral + manager
-    return analyst_steps + research_steps + trader_steps + risk_steps
-
-
-def _positive_int(value: Any, *, default: int) -> int:
-    """Return a positive integer parsed from value, falling back to default.
-
-    Args:
-        value: Candidate value from runtime config.
-        default: Positive fallback value.
-
-    Returns:
-        A positive integer.
-    """
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        parsed = default
-    return max(1, parsed)
 
 
 def _json_safe_final_state(state: dict[str, Any]) -> dict[str, Any]:
@@ -458,3 +510,187 @@ def _extract_decision(text: str) -> str | None:
         if m and (earliest is None or m.start() < earliest[0]):
             earliest = (m.start(), word)
     return earliest[1] if earliest else None
+
+
+# --- Confidence judge ------------------------------------------------------
+
+
+_JUDGE_SYSTEM_PROMPT = (
+    "당신은 트레이딩 분석 결과의 신뢰도를 평가하는 심사관입니다.\n"
+    "여러 애널리스트의 토론과 최종 결정을 보고, 그 결정에 대한 신뢰도를 "
+    "0.0~1.0 사이 부동소수점으로 채점하세요.\n"
+    "- 1.0: 모든 애널리스트가 동의하고 근거가 매우 견고함\n"
+    "- 0.5: 동전 던지기 수준 (찬반이 균형)\n"
+    "- 0.0: 결론에 강한 모순이 있거나 근거가 약함\n"
+    "응답은 반드시 다음 JSON 한 줄로만 출력합니다(추가 텍스트 금지):\n"
+    '{"confidence": 0.0, "rationale": "한 문장 요약"}'
+)
+
+_JUDGE_SECTION_LIMIT = 4000
+_JUDGE_RISK_SECTION_LIMIT = 2000
+
+
+async def _safe_judge(
+    judge: ConfidenceJudge,
+    request: RunRequest,
+    final_state: dict[str, Any],
+) -> float | None:
+    """Invoke a confidence judge, swallowing all errors to None.
+
+    The main run must never fail because of a judge problem. This helper
+    centralises the safety net so call sites stay clean.
+    """
+    try:
+        value = await judge(request, final_state)
+    except Exception:
+        logger.warning(
+            "Confidence judge raised for run_id=%s", request.run_id, exc_info=True
+        )
+        return None
+    if value is None:
+        return None
+    if not isinstance(value, int | float):
+        return None
+    return _clamp_unit(float(value))
+
+
+async def _llm_confidence_judge(
+    request: RunRequest, final_state: dict[str, Any]
+) -> float | None:
+    """Default judge: ask the quick-think LLM to score [0, 1] confidence.
+
+    Disabled when ``WEB_CONFIDENCE_JUDGE`` env is falsy. Returns None on
+    any failure (LLM error, parse failure, missing key). Cost is one
+    additional quick-model call per run.
+    """
+    if not _is_judge_enabled():
+        return None
+    try:
+        return await asyncio.to_thread(_invoke_judge_sync, request, final_state)
+    except Exception:
+        logger.warning(
+            "Default confidence judge failed for run_id=%s",
+            request.run_id,
+            exc_info=True,
+        )
+        return None
+
+
+def _is_judge_enabled() -> bool:
+    raw = os.getenv("WEB_CONFIDENCE_JUDGE", "true").strip().lower()
+    return raw not in {"0", "false", "no", "off", ""}
+
+
+def _invoke_judge_sync(
+    request: RunRequest, final_state: dict[str, Any]
+) -> float | None:
+    """Synchronous LLM call. Run via ``asyncio.to_thread``."""
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    from tradingagents.llm_clients import create_llm_client
+
+    client = create_llm_client(
+        provider=request.llm_provider, model=request.llm_deep_model
+    )
+    llm = client.get_llm()
+    messages = [
+        SystemMessage(content=_JUDGE_SYSTEM_PROMPT),
+        HumanMessage(content=_build_judge_prompt(final_state)),
+    ]
+    response = llm.invoke(messages)
+    text = _normalize_llm_text(getattr(response, "content", ""))
+    return _parse_confidence(text)
+
+
+def _build_judge_prompt(final_state: dict[str, Any]) -> str:
+    sections: list[str] = []
+    for key, label in (
+        ("final_trade_decision", "최종 결정"),
+        ("trader_investment_plan", "트레이더 계획"),
+        ("investment_plan", "투자 의견"),
+    ):
+        value = final_state.get(key)
+        if isinstance(value, str) and value.strip():
+            sections.append(f"## {label}\n{value[:_JUDGE_SECTION_LIMIT]}")
+    risk = final_state.get("risk_debate_state")
+    if isinstance(risk, dict):
+        for key in (
+            "aggressive_history",
+            "conservative_history",
+            "neutral_history",
+            "judge_decision",
+        ):
+            value = risk.get(key)
+            if isinstance(value, str) and value.strip():
+                sections.append(f"## risk:{key}\n{value[:_JUDGE_RISK_SECTION_LIMIT]}")
+    return "\n\n".join(sections) if sections else "분석 결과 없음"
+
+
+def _normalize_llm_text(content: Any) -> str:
+    """Flatten LangChain content (str or list of typed blocks) to a string."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, dict):
+                text = block.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+            elif isinstance(block, str):
+                parts.append(block)
+        return "\n".join(parts)
+    return str(content) if content is not None else ""
+
+
+def _parse_confidence(text: str) -> float | None:
+    """Extract a [0, 1] confidence score from a free-form LLM response.
+
+    Tries, in order:
+    1. JSON object with a numeric ``confidence`` key.
+    2. A trailing ``XX%`` percentage (interpreted as XX/100).
+    3. The first plausible 0..1 float.
+    Returns None when none of the strategies yield a numeric value.
+    """
+    if not text:
+        return None
+
+    # 1) JSON object — search for the first {...} block. Use a non-greedy
+    #    body match to tolerate extra content surrounding the JSON.
+    for json_match in re.finditer(r"\{.*?\}", text, flags=re.DOTALL):
+        try:
+            payload = json.loads(json_match.group(0))
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and "confidence" in payload:
+            value = payload["confidence"]
+            if isinstance(value, bool):  # bool is an int subclass — exclude
+                return None
+            if isinstance(value, int | float):
+                return _clamp_unit(float(value))
+            return None
+
+    # 2) Percentage like "78%".
+    pct = re.search(r"(\d{1,3}(?:\.\d+)?)\s*%", text)
+    if pct:
+        try:
+            return _clamp_unit(float(pct.group(1)) / 100.0)
+        except ValueError:
+            pass
+
+    # 3) First plausible 0..1 float anywhere in the text.
+    num = re.search(r"\b(?:0?\.\d+|1(?:\.0+)?)\b", text)
+    if num:
+        try:
+            return _clamp_unit(float(num.group(0)))
+        except ValueError:
+            pass
+
+    return None
+
+
+def _clamp_unit(value: float) -> float | None:
+    """Return value clamped to [0, 1]; None for NaN/inf."""
+    if math.isnan(value) or math.isinf(value):
+        return None
+    return max(0.0, min(1.0, value))
