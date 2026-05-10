@@ -330,9 +330,9 @@ export function CandleChart({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <OhlcHeader current={headerCurrent} prevClose={headerPrev} />
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 min-w-0">
           <IntervalTabs value={interval} onChange={handleIntervalChange} />
           <IndicatorToolbar
             settings={settings}

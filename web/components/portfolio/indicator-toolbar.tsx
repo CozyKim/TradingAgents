@@ -92,7 +92,7 @@ export function IndicatorToolbar({
   ];
 
   return (
-    <div className="flex items-center gap-1.5 overflow-x-auto">
+    <div className="flex flex-wrap items-center gap-1.5">
       {chips.map((c) => (
         <button
           key={c.key}
