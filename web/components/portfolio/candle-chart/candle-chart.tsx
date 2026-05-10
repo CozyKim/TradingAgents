@@ -67,10 +67,11 @@ export function CandleChart({
   onSettingsReset,
 }: CandleChartProps) {
   const ctx = useCurrency();
-  // 메인 pane(캔들+거래량 공유)은 PANE_HEIGHT.main 픽셀로 고정.
-  // RSI/Stoch가 켜지면 컨테이너 자체가 그만큼 늘어나 메인은 줄지 않는다.
+  // 캔들·거래량·RSI·Stoch 각각이 별도 pane이며, 픽셀 높이로 stretch factor를 고정.
+  // 컨테이너 높이를 ∑(켜진 pane)으로 맞추는 한 각 pane은 자기 픽셀 크기를 유지한다.
   const height =
-    PANE_HEIGHT.main +
+    PANE_HEIGHT.candle +
+    PANE_HEIGHT.volume +
     (settings.panels.rsi.on ? PANE_HEIGHT.rsi : 0) +
     (settings.panels.stoch.on ? PANE_HEIGHT.stoch : 0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -117,29 +118,36 @@ export function CandleChart({
         minMove: 0.01,
       },
     });
-    candle.priceScale().applyOptions({ scaleMargins: { top: 0.05, bottom: 0.3 } });
-    const volume = chart.addSeries(HistogramSeries, {
-      priceFormat: { type: "volume" },
-      priceScaleId: "vol",
-      color: CHART.volumeUp,
-    });
-    chart.priceScale("vol").applyOptions({
-      scaleMargins: { top: 0.75, bottom: 0 },
-    });
-    const volumeMa = chart.addSeries(LineSeries, {
-      priceScaleId: "vol",
-      color: CHART.volumeMa,
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-    });
+    // 캔들 pane(0): 좁은 위·아래 마진만 두고 자동 스케일이 visible 가격에 딱 맞도록.
+    candle.priceScale().applyOptions({ scaleMargins: { top: 0.05, bottom: 0.05 } });
+    // 거래량 pane(1): 별도 pane으로 분리해 캔들 Y축 자동 스케일에 영향을 주지 않게 한다.
+    const volume = chart.addSeries(
+      HistogramSeries,
+      {
+        priceFormat: { type: "volume" },
+        color: CHART.volumeUp,
+        priceLineVisible: false,
+        lastValueVisible: true,
+      },
+      1,
+    );
+    const volumeMa = chart.addSeries(
+      LineSeries,
+      {
+        color: CHART.volumeMa,
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      },
+      1,
+    );
     chartRef.current = chart;
     candleRef.current = candle;
     volumeRef.current = volume;
     volumeMaRef.current = volumeMa;
-    // 메인 pane(캔들+거래량 공유)의 stretch factor를 픽셀-비율로 고정.
-    // 보조 pane이 추가되어도 메인은 항상 PANE_HEIGHT.main 픽셀을 차지한다.
-    candle.getPane().setStretchFactor(PANE_HEIGHT.main);
+    // 각 pane을 픽셀-비율 stretch factor로 고정.
+    candle.getPane().setStretchFactor(PANE_HEIGHT.candle);
+    volume.getPane().setStretchFactor(PANE_HEIGHT.volume);
     // v5: setMarkers는 ISeriesApi에서 제거되어 createSeriesMarkers 플러그인으로 분리됨.
     markersRef.current = createSeriesMarkers(candle, []);
     chart.subscribeCrosshairMove((param) => {

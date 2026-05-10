@@ -30,9 +30,13 @@ export const CHART = {
  * 나눠 가진다. 이 값들을 stretch factor로도 그대로 쓰면, 컨테이너 높이를 ∑(켜진 pane)
  * 으로 맞추는 한 각 pane은 자기 픽셀 크기를 유지한다 — 즉 RSI/Stoch를 켜도 메인이
  * 줄지 않고 차트 전체가 아래로 늘어난다.
+ *
+ * 캔들과 거래량은 별도 pane이다. 한 pane에서 scaleMargins로 분할하면 캔들 가격 축이
+ * 자동 스케일될 때 거래량 영역까지 포함해 빈 공간이 남는다 — 토스/한투처럼 캔들 Y축이
+ * visible 가격에 딱 맞게 fitting 되려면 거래량을 분리해야 한다.
  */
 export const PANE_HEIGHT = {
-  main: 320,
+  candle: 240,
   volume: 80,
   rsi: 100,
   stoch: 100,
