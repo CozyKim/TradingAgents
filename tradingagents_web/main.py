@@ -33,16 +33,27 @@ class SessionRefreshMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
         token = request.cookies.get(self._settings.session_cookie_name)
-        if token and response.status_code < 400:
-            response.set_cookie(
-                key=self._settings.session_cookie_name,
-                value=token,
-                max_age=self._settings.session_max_age_seconds,
-                httponly=True,
-                secure=self._settings.cookie_secure,
-                samesite="strict",
-                path="/",
-            )
+        if not token or response.status_code >= 400:
+            return response
+        # If the endpoint already wrote a Set-Cookie for the session (login
+        # rotates to a new token, logout deletes it), DO NOT overwrite it with
+        # the stale request token — that was the bug that bounced users back
+        # to /login after a successful login.
+        cookie_prefix = f"{self._settings.session_cookie_name}=".lower()
+        for raw_name, raw_value in response.raw_headers:
+            if raw_name.lower() != b"set-cookie":
+                continue
+            if raw_value.decode("latin-1").lower().startswith(cookie_prefix):
+                return response
+        response.set_cookie(
+            key=self._settings.session_cookie_name,
+            value=token,
+            max_age=self._settings.session_max_age_seconds,
+            httponly=True,
+            secure=self._settings.cookie_secure,
+            samesite="strict",
+            path="/",
+        )
         return response
 
 
