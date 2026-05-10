@@ -37,14 +37,16 @@ const MARKER_STYLE: Record<
     position: "aboveBar" | "belowBar" | "inBar";
     shape: "arrowUp" | "arrowDown" | "circle";
     color: string;
-    text: string;
   }
 > = {
-  BUY: { position: "belowBar", shape: "arrowUp", color: CHART.up, text: "BUY" },
-  OVERWEIGHT: { position: "belowBar", shape: "arrowUp", color: CHART.up, text: "OW" },
-  SELL: { position: "aboveBar", shape: "arrowDown", color: CHART.down, text: "SELL" },
-  UNDERWEIGHT: { position: "aboveBar", shape: "arrowDown", color: CHART.down, text: "UW" },
-  HOLD: { position: "inBar", shape: "circle", color: CHART.hold, text: "HOLD" },
+  // 텍스트는 일부러 비워둔다 — 한 봉에 여러 신호가 몰리면 라벨이 겹쳐 가독성을
+  // 망친다. 모양과 색으로 의미가 충분히 전달되고, 상세는 hover 또는
+  // Analysis history 섹션에서 본다.
+  BUY:         { position: "belowBar", shape: "arrowUp",   color: CHART.up   },
+  OVERWEIGHT:  { position: "belowBar", shape: "arrowUp",   color: CHART.up   },
+  SELL:        { position: "aboveBar", shape: "arrowDown", color: CHART.down },
+  UNDERWEIGHT: { position: "aboveBar", shape: "arrowDown", color: CHART.down },
+  HOLD:        { position: "inBar",    shape: "circle",    color: CHART.hold },
 };
 
 export interface CandleChartProps {
@@ -217,10 +219,22 @@ export function CandleChart({
     };
     setLine(volumeMaRef.current, sma(volumes, 20), times);
 
-    // 인터벌이 바뀔 때마다 전체를 다시 맞춰 보여준다.
-    // (이전엔 daily visible range를 주/월에 그대로 적용했으나 봉 폭이 달라져 우측 공백이 생겼음.)
-    chartRef.current?.timeScale().fitContent();
-  }, [series]);
+    // 초기 보이는 구간을 인터벌별로 적절히 제한해 첫 화면이 너무 빽빽하지 않게 한다.
+    // 사용자는 휠로 확대/축소해 더 넓은 범위를 볼 수 있다.
+    //   1D → 최근 90 거래일 (~4개월)
+    //   1W → 최근 52 주 (~1년)
+    //   1M → 전체 (보통 12~13개)
+    const ts = chartRef.current?.timeScale();
+    if (ts) {
+      const limit = interval === "1D" ? 90 : interval === "1W" ? 52 : Infinity;
+      const total = series.length;
+      if (total > 0 && total > limit) {
+        ts.setVisibleLogicalRange({ from: total - limit, to: total - 1 });
+      } else {
+        ts.fitContent();
+      }
+    }
+  }, [series, interval]);
 
   // 신호 마커 — 데이터 effect에서 분리하여 signals 변경이 viewport(time scale)를 리셋하지 않도록 함.
   // v5 series-markers 플러그인은 time에 대한 binary search를 사용하므로 ASC 정렬이 필수.
@@ -236,7 +250,6 @@ export function CandleChart({
         position: MARKER_STYLE[s.decision].position,
         shape: MARKER_STYLE[s.decision].shape,
         color: MARKER_STYLE[s.decision].color,
-        text: MARKER_STYLE[s.decision].text,
       })),
     );
   }, [signals, interval]);
