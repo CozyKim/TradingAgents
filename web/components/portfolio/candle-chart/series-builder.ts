@@ -169,7 +169,7 @@ export function syncOptionalSeries(
     }
   }
 
-  // RSI — pane 2
+  // RSI — pane 2. 0~100 범위로 잠가 자동 스케일이 음수 영역까지 늘어지지 않게 한다.
   if (settings.panels.rsi.on) {
     if (!next.rsi) {
       next.rsi = chart.addSeries(
@@ -179,6 +179,9 @@ export function syncOptionalSeries(
           lineWidth: 1,
           priceLineVisible: false,
           lastValueVisible: false,
+          autoscaleInfoProvider: () => ({
+            priceRange: { minValue: 0, maxValue: 100 },
+          }),
         },
         RSI_PANE,
       );
@@ -205,6 +208,9 @@ export function syncOptionalSeries(
           lineWidth: 1,
           priceLineVisible: false,
           lastValueVisible: false,
+          autoscaleInfoProvider: () => ({
+            priceRange: { minValue: 0, maxValue: 100 },
+          }),
         },
         STOCH_PANE,
       );
@@ -222,6 +228,9 @@ export function syncOptionalSeries(
           lineStyle: LineStyle.Dashed,
           priceLineVisible: false,
           lastValueVisible: false,
+          autoscaleInfoProvider: () => ({
+            priceRange: { minValue: 0, maxValue: 100 },
+          }),
         },
         stochPaneIdx,
       );
