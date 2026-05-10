@@ -38,7 +38,7 @@ export function IndicatorToolbar({
   const chips: ChipDef[] = [
     {
       key: "sma",
-      label: `SMA${ov.sma.period}`,
+      label: "SMA",
       active: ov.sma.on,
       color: INDICATOR_COLORS.sma,
       onToggle: () =>
@@ -184,18 +184,10 @@ function ParameterForm({
   return (
     <div className="flex flex-col gap-3">
       <Section title="Overlays">
-        <NumberField
-          label="SMA period"
-          value={ov.sma.period}
-          min={2}
-          max={200}
-          onChange={(v) =>
-            onChange({
-              ...settings,
-              overlays: { ...ov, sma: { ...ov.sma, period: v } },
-            })
-          }
-        />
+        {/*
+          SMA는 5/20/60/120 4고정 기간을 단일 on/off 토글로 함께 관리한다.
+          (period 필드는 schema/localStorage 호환을 위해 남겨두지만 UI에서는 노출하지 않음.)
+        */}
         <NumberField
           label="EMA period"
           value={ov.ema.period}

@@ -1,6 +1,6 @@
 import { startOfISOWeek, format, parseISO } from "date-fns";
 import type { PricePoint } from "@/lib/prices";
-import type { SignalMarker } from "@/components/portfolio/price-chart";
+import type { SignalMarker } from "./types";
 
 export type Interval = "1D" | "1W" | "1M";
 

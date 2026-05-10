@@ -7,14 +7,19 @@ import {
 } from "lightweight-charts";
 import type { ChartSettings } from "@/lib/chart-settings";
 import type { PricePoint } from "@/lib/prices";
-import { ema, bollinger, rsi, stochasticSlow } from "@/lib/indicators";
+import { sma, ema, bollinger, rsi, stochasticSlow } from "@/lib/indicators";
 import { CHART } from "./series-config";
 
 /**
  * settings 토글에 따라 차트에 추가/제거되는 옵션 시리즈들을 관리.
- * 캔들·SMA·거래량은 항상 켜져 있으므로 candle-chart.tsx 본체에서 다룬다.
+ * SMA(4종 단일 토글)·EMA·Bollinger·RSI·Stoch가 모두 여기서 관리된다.
+ * 캔들·거래량·거래량 MA만 candle-chart.tsx 본체에서 항상 그린다.
  */
 export interface OptionalSeries {
+  sma5: ISeriesApi<"Line"> | null;
+  sma20: ISeriesApi<"Line"> | null;
+  sma60: ISeriesApi<"Line"> | null;
+  sma120: ISeriesApi<"Line"> | null;
   ema: ISeriesApi<"Line"> | null;
   bbUp: ISeriesApi<"Line"> | null;
   bbMid: ISeriesApi<"Line"> | null;
@@ -25,6 +30,10 @@ export interface OptionalSeries {
 }
 
 export const EMPTY_OPTIONAL: OptionalSeries = {
+  sma5: null,
+  sma20: null,
+  sma60: null,
+  sma120: null,
   ema: null,
   bbUp: null,
   bbMid: null,
@@ -33,6 +42,18 @@ export const EMPTY_OPTIONAL: OptionalSeries = {
   stochK: null,
   stochD: null,
 };
+
+// SMA — 단일 on/off 토글로 4개 고정 기간선을 함께 관리.
+const SMA_CONFIG: ReadonlyArray<{
+  ref: "sma5" | "sma20" | "sma60" | "sma120";
+  period: number;
+  color: string;
+}> = [
+  { ref: "sma5", period: 5, color: CHART.ma5 },
+  { ref: "sma20", period: 20, color: CHART.ma20 },
+  { ref: "sma60", period: 60, color: CHART.ma60 },
+  { ref: "sma120", period: 120, color: CHART.ma120 },
+];
 
 // v5 panes API: chart.addSeries(def, options, paneIndex). 메인 = 0.
 const RSI_PANE = 2;
@@ -59,6 +80,29 @@ export function syncOptionalSeries(
   const next: OptionalSeries = { ...refs };
   const closes = series.map((p) => p.close);
   const times = series.map((p) => p.date);
+
+  // SMA — 메인 페인, 4 고정 기간(5/20/60/120) + 단일 on/off 토글
+  if (settings.overlays.sma.on) {
+    for (const cfg of SMA_CONFIG) {
+      if (!next[cfg.ref]) {
+        next[cfg.ref] = chart.addSeries(LineSeries, {
+          color: cfg.color,
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        });
+      }
+      setLine(next[cfg.ref]!, sma(closes, cfg.period), times);
+    }
+  } else {
+    for (const cfg of SMA_CONFIG) {
+      const ref = next[cfg.ref];
+      if (ref) {
+        chart.removeSeries(ref);
+        next[cfg.ref] = null;
+      }
+    }
+  }
 
   // EMA — 메인 페인
   if (settings.overlays.ema.on) {

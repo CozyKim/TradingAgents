@@ -16,12 +16,14 @@ import {
   type Time,
 } from "lightweight-charts";
 import type { PricePoint } from "@/lib/prices";
-import type { SignalMarker } from "@/components/portfolio/price-chart";
+import type { SignalMarker } from "./types";
 import type { ChartSettings } from "@/lib/chart-settings";
 import { sma } from "@/lib/indicators";
+import { useCurrency, formatPrice } from "@/lib/currency";
 import { CHART } from "./series-config";
 import { IntervalTabs } from "./interval-tabs";
 import { OhlcHeader } from "./ohlc-header";
+import { IndicatorToolbar } from "@/components/portfolio/indicator-toolbar";
 import { resample, bucketKey, alignSignals, type Interval } from "./resample";
 import {
   syncOptionalSeries,
@@ -60,17 +62,16 @@ export function CandleChart({
   signals = [],
   avgCost,
   settings,
+  onSettingsChange,
+  onSettingsReset,
   height = 480,
 }: CandleChartProps) {
+  const ctx = useCurrency();
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const volumeMaRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const sma5Ref = useRef<ISeriesApi<"Line"> | null>(null);
-  const sma20Ref = useRef<ISeriesApi<"Line"> | null>(null);
-  const sma60Ref = useRef<ISeriesApi<"Line"> | null>(null);
-  const sma120Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const avgCostLineRef = useRef<IPriceLine | null>(null);
   const optionalRef = useRef<OptionalSeries>({ ...EMPTY_OPTIONAL });
@@ -93,6 +94,12 @@ export function CandleChart({
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderColor: CHART.axis },
       timeScale: { borderColor: CHART.axis, timeVisible: false },
+      // 가격 축/크로스헤어 라벨을 통화 컨텍스트에 맞게 포맷.
+      // 초기값으로 기본 USD 포맷을 등록하고, ctx 변화는 별도 effect에서 applyOptions로 갱신.
+      localization: {
+        priceFormatter: (price: number) =>
+          formatPrice(price, ctx, { usdDecimals: 0 }),
+      },
       autoSize: true,
     });
     // Lightweight Charts v5: addCandlestickSeries는 deprecated.
@@ -121,38 +128,10 @@ export function CandleChart({
       priceLineVisible: false,
       lastValueVisible: false,
     });
-    const sma5 = chart.addSeries(LineSeries, {
-      color: CHART.ma5,
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-    });
-    const sma20 = chart.addSeries(LineSeries, {
-      color: CHART.ma20,
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-    });
-    const sma60 = chart.addSeries(LineSeries, {
-      color: CHART.ma60,
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-    });
-    const sma120 = chart.addSeries(LineSeries, {
-      color: CHART.ma120,
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-    });
     chartRef.current = chart;
     candleRef.current = candle;
     volumeRef.current = volume;
     volumeMaRef.current = volumeMa;
-    sma5Ref.current = sma5;
-    sma20Ref.current = sma20;
-    sma60Ref.current = sma60;
-    sma120Ref.current = sma120;
     // v5: setMarkers는 ISeriesApi에서 제거되어 createSeriesMarkers 플러그인으로 분리됨.
     markersRef.current = createSeriesMarkers(candle, []);
     chart.subscribeCrosshairMove((param) => {
@@ -187,22 +166,18 @@ export function CandleChart({
       candleRef.current = null;
       volumeRef.current = null;
       volumeMaRef.current = null;
-      sma5Ref.current = null;
-      sma20Ref.current = null;
-      sma60Ref.current = null;
-      sma120Ref.current = null;
       markersRef.current = null;
       avgCostLineRef.current = null;
       optionalRef.current = { ...EMPTY_OPTIONAL };
     };
+    // ctx는 의존성에서 제외 — chart 재생성을 막고, 별도 effect에서 applyOptions로 갱신.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const series = useMemo(() => resample(points, interval), [points, interval]);
 
   useEffect(() => {
     if (!candleRef.current || !volumeRef.current) return;
-    if (!sma5Ref.current || !sma20Ref.current) return;
-    if (!sma60Ref.current || !sma120Ref.current) return;
     if (!volumeMaRef.current) return;
 
     // 시리즈가 바뀌면(인터벌 변경/points 변경) 이전 hover는 더 이상 유효하지 않음
@@ -224,7 +199,6 @@ export function CandleChart({
         color: p.close >= p.open ? CHART.volumeUp : CHART.volumeDown,
       })),
     );
-    const closes = series.map((p) => p.close);
     const volumes = series.map((p) => p.volume);
     const times = series.map((p) => p.date);
     const setLine = (
@@ -238,10 +212,6 @@ export function CandleChart({
           .filter((d): d is { time: Time; value: number } => d != null),
       );
     };
-    setLine(sma5Ref.current, sma(closes, 5), times);
-    setLine(sma20Ref.current, sma(closes, 20), times);
-    setLine(sma60Ref.current, sma(closes, 60), times);
-    setLine(sma120Ref.current, sma(closes, 120), times);
     setLine(volumeMaRef.current, sma(volumes, 20), times);
 
     if (savedRangeRef.current) {
@@ -298,12 +268,23 @@ export function CandleChart({
       lineStyle: LineStyle.Dashed,
       lineWidth: 1,
       axisLabelVisible: true,
-      title: "Avg",
+      title: `Avg ${formatPrice(avgCost, ctx)}`,
     });
-  }, [avgCost]);
+  }, [avgCost, ctx.currency, ctx.fxRate]);
 
-  // 옵션 시리즈(EMA/Bollinger/RSI/Stoch) — settings 토글에 따라 add/remove.
-  // 캔들·SMA·거래량은 본 effect와 무관하므로 깜빡이지 않음.
+  // 통화/환율 변경 시 가격 축 포맷터 재적용 — chart 자체는 재생성하지 않음.
+  useEffect(() => {
+    if (!chartRef.current) return;
+    chartRef.current.applyOptions({
+      localization: {
+        priceFormatter: (price: number) =>
+          formatPrice(price, ctx, { usdDecimals: 0 }),
+      },
+    });
+  }, [ctx.currency, ctx.fxRate]);
+
+  // 옵션 시리즈(SMA/EMA/Bollinger/RSI/Stoch) — settings 토글에 따라 add/remove.
+  // 캔들·거래량·거래량 MA는 본 effect와 무관하므로 깜빡이지 않음.
   useEffect(() => {
     if (!chartRef.current) return;
     optionalRef.current = syncOptionalSeries(
@@ -330,9 +311,16 @@ export function CandleChart({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <OhlcHeader current={headerCurrent} prevClose={headerPrev} />
-        <IntervalTabs value={interval} onChange={handleIntervalChange} />
+        <div className="flex items-center gap-2">
+          <IntervalTabs value={interval} onChange={handleIntervalChange} />
+          <IndicatorToolbar
+            settings={settings}
+            onChange={onSettingsChange}
+            onReset={onSettingsReset}
+          />
+        </div>
       </div>
       <div ref={containerRef} style={{ height, width: "100%" }} />
     </div>

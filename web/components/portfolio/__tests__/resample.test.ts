@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { bucketKey, resample, alignSignals } from "../candle-chart/resample";
 import type { PricePoint } from "@/lib/prices";
-import type { SignalMarker } from "@/components/portfolio/price-chart";
+import type { SignalMarker } from "../candle-chart/types";
 
 const mk = (d: string, o: number, h: number, l: number, c: number, v: number): PricePoint =>
   ({ date: d, open: o, high: h, low: l, close: c, volume: v });
