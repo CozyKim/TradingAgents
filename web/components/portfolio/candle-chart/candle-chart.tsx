@@ -2,13 +2,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createChart,
+  createSeriesMarkers,
   ColorType,
   CrosshairMode,
+  LineStyle,
   CandlestickSeries,
   HistogramSeries,
   LineSeries,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
   type Time,
 } from "lightweight-charts";
 import type { PricePoint } from "@/lib/prices";
@@ -18,7 +22,23 @@ import { sma } from "@/lib/indicators";
 import { CHART } from "./series-config";
 import { IntervalTabs } from "./interval-tabs";
 import { OhlcHeader } from "./ohlc-header";
-import { resample, bucketKey, type Interval } from "./resample";
+import { resample, bucketKey, alignSignals, type Interval } from "./resample";
+
+const MARKER_STYLE: Record<
+  SignalMarker["decision"],
+  {
+    position: "aboveBar" | "belowBar" | "inBar";
+    shape: "arrowUp" | "arrowDown" | "circle";
+    color: string;
+    text: string;
+  }
+> = {
+  BUY: { position: "belowBar", shape: "arrowUp", color: CHART.up, text: "BUY" },
+  OVERWEIGHT: { position: "belowBar", shape: "arrowUp", color: CHART.up, text: "OW" },
+  SELL: { position: "aboveBar", shape: "arrowDown", color: CHART.down, text: "SELL" },
+  UNDERWEIGHT: { position: "aboveBar", shape: "arrowDown", color: CHART.down, text: "UW" },
+  HOLD: { position: "inBar", shape: "circle", color: CHART.hold, text: "HOLD" },
+};
 
 export interface CandleChartProps {
   points: PricePoint[];
@@ -30,7 +50,12 @@ export interface CandleChartProps {
   height?: number;
 }
 
-export function CandleChart({ points, height = 480 }: CandleChartProps) {
+export function CandleChart({
+  points,
+  signals = [],
+  avgCost,
+  height = 480,
+}: CandleChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -40,6 +65,8 @@ export function CandleChart({ points, height = 480 }: CandleChartProps) {
   const sma20Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const sma60Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const sma120Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const avgCostLineRef = useRef<IPriceLine | null>(null);
 
   const [interval, setIntervalState] = useState<Interval>("1D");
   const [hovered, setHovered] = useState<PricePoint | null>(null);
@@ -119,6 +146,8 @@ export function CandleChart({ points, height = 480 }: CandleChartProps) {
     sma20Ref.current = sma20;
     sma60Ref.current = sma60;
     sma120Ref.current = sma120;
+    // v5: setMarkers는 ISeriesApi에서 제거되어 createSeriesMarkers 플러그인으로 분리됨.
+    markersRef.current = createSeriesMarkers(candle, []);
     chart.subscribeCrosshairMove((param) => {
       if (!param.time || !param.seriesData.size) {
         setHovered(null);
@@ -141,6 +170,11 @@ export function CandleChart({ points, height = 480 }: CandleChartProps) {
       });
     });
     return () => {
+      try {
+        markersRef.current?.detach();
+      } catch {
+        // chart.remove()가 먼저 일어나면 detach가 throw할 수 있음 — 무시.
+      }
       chart.remove();
       chartRef.current = null;
       candleRef.current = null;
@@ -150,6 +184,8 @@ export function CandleChart({ points, height = 480 }: CandleChartProps) {
       sma20Ref.current = null;
       sma60Ref.current = null;
       sma120Ref.current = null;
+      markersRef.current = null;
+      avgCostLineRef.current = null;
     };
   }, []);
 
@@ -216,6 +252,47 @@ export function CandleChart({ points, height = 480 }: CandleChartProps) {
       chartRef.current?.timeScale().fitContent();
     }
   }, [series]);
+
+  // 신호 마커 — 데이터 effect에서 분리하여 signals 변경이 viewport(time scale)를 리셋하지 않도록 함.
+  // v5 series-markers 플러그인은 time에 대한 binary search를 사용하므로 ASC 정렬이 필수.
+  useEffect(() => {
+    if (!markersRef.current) return;
+    const aligned = alignSignals(signals, interval);
+    const sorted = [...aligned].sort((a, b) =>
+      a.date < b.date ? -1 : a.date > b.date ? 1 : 0,
+    );
+    markersRef.current.setMarkers(
+      sorted.map((s) => ({
+        time: s.date as Time,
+        position: MARKER_STYLE[s.decision].position,
+        shape: MARKER_STYLE[s.decision].shape,
+        color: MARKER_STYLE[s.decision].color,
+        text: MARKER_STYLE[s.decision].text,
+      })),
+    );
+  }, [signals, interval]);
+
+  // 평단가 가격 라인 — avgCost가 바뀔 때마다 제거 후 재생성.
+  useEffect(() => {
+    if (!candleRef.current) return;
+    if (avgCostLineRef.current) {
+      try {
+        candleRef.current.removePriceLine(avgCostLineRef.current);
+      } catch {
+        // 시리즈가 이미 destroyed면 무시.
+      }
+      avgCostLineRef.current = null;
+    }
+    if (avgCost == null || !Number.isFinite(avgCost)) return;
+    avgCostLineRef.current = candleRef.current.createPriceLine({
+      price: avgCost,
+      color: CHART.avgCost,
+      lineStyle: LineStyle.Dashed,
+      lineWidth: 1,
+      axisLabelVisible: true,
+      title: "Avg",
+    });
+  }, [avgCost]);
 
   const handleIntervalChange = (next: Interval) => {
     const range = chartRef.current?.timeScale().getVisibleRange();
