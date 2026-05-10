@@ -57,6 +57,21 @@ class GetSocialMessagesStocktwitsTests(unittest.TestCase):
         self.assertIn("rate-limited", result)
 
     @patch("tradingagents.dataflows.stocktwits.requests.get")
+    def test_403_returns_blocked_message(self, mock_get):
+        mock_get.return_value = _mock_response(403, {})
+        result = stocktwits.get_social_messages_stocktwits("AAPL", 30)
+        self.assertIn("403", result)
+        self.assertIn("blocked", result)
+
+    @patch("tradingagents.dataflows.stocktwits.requests.get")
+    def test_request_sends_browser_user_agent(self, mock_get):
+        mock_get.return_value = _mock_response(200, {"messages": []})
+        stocktwits.get_social_messages_stocktwits("AAPL", 30)
+        headers = mock_get.call_args.kwargs.get("headers") or {}
+        self.assertIn("User-Agent", headers)
+        self.assertIn("Mozilla", headers["User-Agent"])
+
+    @patch("tradingagents.dataflows.stocktwits.requests.get")
     def test_limit_clamping_low(self, mock_get):
         mock_get.return_value = _mock_response(200, {"messages": []})
         stocktwits.get_social_messages_stocktwits("AAPL", 0)
