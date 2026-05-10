@@ -245,12 +245,12 @@ export function CandleChart({
 
     // 초기 보이는 구간을 인터벌별로 적절히 제한해 첫 화면이 너무 빽빽하지 않게 한다.
     // 사용자는 휠로 확대/축소해 더 넓은 범위를 볼 수 있다.
-    //   1D → 최근 90 거래일 (~4개월)
+    //   1D → 최근 45 거래일 (~2개월)
     //   1W → 최근 52 주 (~1년)
     //   1M → 전체 (보통 12~13개)
     const ts = chartRef.current?.timeScale();
     if (ts) {
-      const limit = interval === "1D" ? 90 : interval === "1W" ? 52 : Infinity;
+      const limit = interval === "1D" ? 45 : interval === "1W" ? 52 : Infinity;
       const total = series.length;
       if (total > 0 && total > limit) {
         ts.setVisibleLogicalRange({ from: total - limit, to: total - 1 });
