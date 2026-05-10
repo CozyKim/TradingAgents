@@ -8,7 +8,7 @@ import {
 import type { ChartSettings } from "@/lib/chart-settings";
 import type { PricePoint } from "@/lib/prices";
 import { sma, ema, bollinger, rsi, stochasticSlow } from "@/lib/indicators";
-import { CHART } from "./series-config";
+import { CHART, PANE_HEIGHT } from "./series-config";
 
 /**
  * settings 토글에 따라 차트에 추가/제거되는 옵션 시리즈들을 관리.
@@ -185,6 +185,8 @@ export function syncOptionalSeries(
         },
         RSI_PANE,
       );
+      // 메인 pane 크기를 유지하기 위해 RSI pane도 픽셀-비율 stretch factor로 고정.
+      next.rsi.getPane().setStretchFactor(PANE_HEIGHT.rsi);
     }
     setLine(next.rsi, rsi(closes, settings.panels.rsi.period), times);
   } else if (next.rsi) {
@@ -219,6 +221,8 @@ export function syncOptionalSeries(
     // 새 페인을 생성/클램프할 수 있다. %K가 실제로 안착한 페인 인덱스를 다시 읽어와
     // %D도 같은 페인을 사용하도록 강제한다 (분리되어 그려지는 P2 버그 방지).
     const stochPaneIdx = next.stochK.getPane().paneIndex();
+    // 메인 pane 크기 유지를 위한 stretch factor.
+    next.stochK.getPane().setStretchFactor(PANE_HEIGHT.stoch);
     if (!next.stochD) {
       next.stochD = chart.addSeries(
         LineSeries,

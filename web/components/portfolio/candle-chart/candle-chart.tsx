@@ -20,7 +20,7 @@ import type { SignalMarker } from "./types";
 import type { ChartSettings } from "@/lib/chart-settings";
 import { sma } from "@/lib/indicators";
 import { useCurrency, formatPrice } from "@/lib/currency";
-import { CHART } from "./series-config";
+import { CHART, PANE_HEIGHT } from "./series-config";
 import { IntervalTabs } from "./interval-tabs";
 import { OhlcHeader } from "./ohlc-header";
 import { IndicatorToolbar } from "@/components/portfolio/indicator-toolbar";
@@ -56,7 +56,6 @@ export interface CandleChartProps {
   settings: ChartSettings;
   onSettingsChange: (next: ChartSettings) => void;
   onSettingsReset: () => void;
-  height?: number;
 }
 
 export function CandleChart({
@@ -66,9 +65,14 @@ export function CandleChart({
   settings,
   onSettingsChange,
   onSettingsReset,
-  height = 480,
 }: CandleChartProps) {
   const ctx = useCurrency();
+  // 메인 pane(캔들+거래량 공유)은 PANE_HEIGHT.main 픽셀로 고정.
+  // RSI/Stoch가 켜지면 컨테이너 자체가 그만큼 늘어나 메인은 줄지 않는다.
+  const height =
+    PANE_HEIGHT.main +
+    (settings.panels.rsi.on ? PANE_HEIGHT.rsi : 0) +
+    (settings.panels.stoch.on ? PANE_HEIGHT.stoch : 0);
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -133,6 +137,9 @@ export function CandleChart({
     candleRef.current = candle;
     volumeRef.current = volume;
     volumeMaRef.current = volumeMa;
+    // 메인 pane(캔들+거래량 공유)의 stretch factor를 픽셀-비율로 고정.
+    // 보조 pane이 추가되어도 메인은 항상 PANE_HEIGHT.main 픽셀을 차지한다.
+    candle.getPane().setStretchFactor(PANE_HEIGHT.main);
     // v5: setMarkers는 ISeriesApi에서 제거되어 createSeriesMarkers 플러그인으로 분리됨.
     markersRef.current = createSeriesMarkers(candle, []);
     chart.subscribeCrosshairMove((param) => {

@@ -22,3 +22,18 @@ export const CHART = {
   stochD: "#1B64DA",
   threshold: "#D1D6DB",
 } as const;
+
+/**
+ * 각 pane의 의도된 픽셀 높이.
+ *
+ * Lightweight Charts는 chart 컨테이너의 높이를 모든 pane이 stretch factor 비율로
+ * 나눠 가진다. 이 값들을 stretch factor로도 그대로 쓰면, 컨테이너 높이를 ∑(켜진 pane)
+ * 으로 맞추는 한 각 pane은 자기 픽셀 크기를 유지한다 — 즉 RSI/Stoch를 켜도 메인이
+ * 줄지 않고 차트 전체가 아래로 늘어난다.
+ */
+export const PANE_HEIGHT = {
+  main: 320,
+  volume: 80,
+  rsi: 100,
+  stoch: 100,
+} as const;
