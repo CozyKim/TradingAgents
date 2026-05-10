@@ -92,13 +92,16 @@ export function CandleChart({
       layout: {
         background: { type: ColorType.Solid, color: CHART.background },
         textColor: CHART.text,
+        // 11px → 좁은 모바일 폭에서 가격축이 차트 영역을 덜 잠식.
+        fontSize: 11,
       },
       grid: {
         vertLines: { color: CHART.grid },
         horzLines: { color: CHART.grid },
       },
       crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: CHART.axis },
+      // minimumWidth: 0으로 가격축이 실제 텍스트 폭에 딱 맞게 좁아지도록.
+      rightPriceScale: { borderColor: CHART.axis, minimumWidth: 0 },
       timeScale: { borderColor: CHART.axis, timeVisible: false },
       autoSize: true,
     });
@@ -117,6 +120,11 @@ export function CandleChart({
         formatter: (price: number) => formatPrice(price, ctx, { usdDecimals: 0 }),
         minMove: 0.01,
       },
+      // 우측 axis의 빨간 현재가 배지(lastValueVisible)를 끈다 — 좁은 모바일 폭에서
+      // 배지가 캔들 영역을 덮어 가독성을 해쳤다. 종가는 OHLC 헤더에 항상 표시되므로
+      // 정보 손실 없음.
+      lastValueVisible: false,
+      priceLineVisible: false,
     });
     // 캔들 pane(0): 좁은 위·아래 마진만 두고 자동 스케일이 visible 가격에 딱 맞도록.
     candle.priceScale().applyOptions({ scaleMargins: { top: 0.05, bottom: 0.05 } });
@@ -127,7 +135,8 @@ export function CandleChart({
         priceFormat: { type: "volume" },
         color: CHART.volumeUp,
         priceLineVisible: false,
-        lastValueVisible: true,
+        // 거래량 축의 마지막 값 배지도 같은 이유로 숨김.
+        lastValueVisible: false,
       },
       1,
     );
@@ -287,7 +296,8 @@ export function CandleChart({
       lineStyle: LineStyle.Dashed,
       lineWidth: 1,
       axisLabelVisible: true,
-      title: `Avg ${formatPrice(avgCost, ctx)}`,
+      // 우측 axis 라벨은 가격만 표시 (가로 폭 절약).
+      title: "",
     });
   }, [avgCost, ctx.currency, ctx.fxRate]);
 
