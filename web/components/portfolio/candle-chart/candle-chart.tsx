@@ -17,6 +17,7 @@ import type { ChartSettings } from "@/lib/chart-settings";
 import { sma } from "@/lib/indicators";
 import { CHART } from "./series-config";
 import { IntervalTabs } from "./interval-tabs";
+import { OhlcHeader } from "./ohlc-header";
 import { resample, bucketKey, type Interval } from "./resample";
 
 export interface CandleChartProps {
@@ -41,6 +42,7 @@ export function CandleChart({ points, height = 480 }: CandleChartProps) {
   const sma120Ref = useRef<ISeriesApi<"Line"> | null>(null);
 
   const [interval, setIntervalState] = useState<Interval>("1D");
+  const [hovered, setHovered] = useState<PricePoint | null>(null);
   const savedRangeRef = useRef<{ from: Time; to: Time } | null>(null);
 
   useEffect(() => {
@@ -117,6 +119,27 @@ export function CandleChart({ points, height = 480 }: CandleChartProps) {
     sma20Ref.current = sma20;
     sma60Ref.current = sma60;
     sma120Ref.current = sma120;
+    chart.subscribeCrosshairMove((param) => {
+      if (!param.time || !param.seriesData.size) {
+        setHovered(null);
+        return;
+      }
+      const c = param.seriesData.get(candle) as
+        | { time: Time; open: number; high: number; low: number; close: number }
+        | undefined;
+      if (!c) {
+        setHovered(null);
+        return;
+      }
+      setHovered({
+        date: String(param.time),
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: 0,
+      });
+    });
     return () => {
       chart.remove();
       chartRef.current = null;
@@ -137,6 +160,9 @@ export function CandleChart({ points, height = 480 }: CandleChartProps) {
     if (!sma5Ref.current || !sma20Ref.current) return;
     if (!sma60Ref.current || !sma120Ref.current) return;
     if (!volumeMaRef.current) return;
+
+    // 시리즈가 바뀌면(인터벌 변경/points 변경) 이전 hover는 더 이상 유효하지 않음
+    setHovered(null);
 
     candleRef.current.setData(
       series.map((p) => ({
@@ -197,9 +223,18 @@ export function CandleChart({ points, height = 480 }: CandleChartProps) {
     setIntervalState(next);
   };
 
+  const headerCurrent = hovered ?? series[series.length - 1] ?? null;
+  const headerPrev = (() => {
+    if (!headerCurrent) return null;
+    const idx = series.findIndex((p) => p.date === headerCurrent.date);
+    if (idx <= 0) return null;
+    return series[idx - 1].close;
+  })();
+
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
+        <OhlcHeader current={headerCurrent} prevClose={headerPrev} />
         <IntervalTabs value={interval} onChange={handleIntervalChange} />
       </div>
       <div ref={containerRef} style={{ height, width: "100%" }} />
