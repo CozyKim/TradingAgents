@@ -1,9 +1,18 @@
 """FastAPI application factory and entrypoint."""
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+
+# Load .env into process env BEFORE any tradingagents_web imports so that
+# vendor SDKs reading os.environ at module import time (e.g. FINNHUB_API_KEY,
+# OPENAI_API_KEY) see the values. Settings(env_prefix="WEB_") only binds
+# WEB_*-prefixed keys to its own fields and does not propagate the rest to
+# os.environ, so without this call vendor keys silently default to None and
+# the social/news analysts produce "key not set" placeholder reports.
+load_dotenv()
 
 from tradingagents_web.api import account as account_api
 from tradingagents_web.api import alerts as alerts_api
