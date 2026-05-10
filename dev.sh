@@ -47,6 +47,24 @@ if [[ ! -f "${ROOT_DIR}/.env" ]]; then
   exit 1
 fi
 
+# ── 워크트리 안전장치 ─────────────────────────────────────────────────
+# 사고 이력(2026-05-09): 워크트리 안에서 부모 .env를 그대로 복사한 결과
+# WEB_DATABASE_URL이 운영 DB(~/.tradingagents/web.db)를 가리켰고, E2E 셋업이
+# 운영 비밀번호를 덮어썼다. dev.sh가 워크트리에서 동작 중이고 .env가 운영
+# DB를 가리키면 차단한다.
+HOME_DB_ABS="${HOME}/.tradingagents/web.db"
+WT_DB_LINE="$(grep -E '^WEB_DATABASE_URL=' "${ROOT_DIR}/.env" || true)"
+if [[ "${ROOT_DIR}" == *"/.claude/worktrees/"* ]] \
+   && [[ "${WT_DB_LINE}" == *"${HOME_DB_ABS}"* ]] \
+   && [[ "${ALLOW_PROD_DB_IN_WORKTREE:-}" != "1" ]]; then
+  echo "[dev.sh] 워크트리에서 .env가 운영 DB를 가리키고 있다:" >&2
+  echo "             ${WT_DB_LINE}" >&2
+  echo "         부모 .env를 그대로 복사한 결과로 보임. .env.test를 사용하거나" >&2
+  echo "         WEB_DATABASE_URL을 워크트리 내부 상대경로로 수정해야 한다." >&2
+  echo "         (이 검사를 무시하려면 ALLOW_PROD_DB_IN_WORKTREE=1 ./dev.sh)" >&2
+  exit 1
+fi
+
 # ── 종료 처리 ─────────────────────────────────────────────────────────
 PIDS=()
 cleanup() {

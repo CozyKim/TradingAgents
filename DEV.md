@@ -58,6 +58,44 @@ cd web && npm run typecheck       # frontend type check
 cd web && npm run build           # frontend build
 ```
 
+### E2E (Playwright) — 격리된 DB 사용
+
+Playwright E2E 는 **반드시 격리된 sqlite 파일** 위에서만 돌아야 한다. 2026-05-09
+사고처럼 운영 DB(`~/.tradingagents/web.db`) 의 로그인 비밀번호를 자동 셋업이
+덮어쓰는 일을 막기 위해 다음 3중 방어가 박혀 있다:
+
+1. **`tradingagents-web set-password` 가드** — `WEB_DATABASE_URL` 이 운영 DB 를
+   가리키는 상태에서 stdin 이 비대화형(파이프) 이면 거부 (exit 2). 우회는
+   `--allow-prod-overwrite` 플래그 또는 `TRADINGAGENTS_ALLOW_PROD_OVERWRITE=1`
+   환경변수가 명시된 경우만.
+2. **`scripts/setup_e2e.sh`** — `.env.test` 를 로드하고 `./tradingagents_web_e2e.db`
+   에 마이그레이션 + `test1234` 비밀번호를 시드한다. 셸에서도 다시 한 번
+   `WEB_DATABASE_URL` 이 운영 DB 인지 검사하고 그러면 즉시 종료.
+3. **`web/tests/e2e/global-setup.ts`** — Playwright 가 테스트를 시작하기 전에
+   `WEB_DATABASE_URL` 이 비어 있거나 운영 DB 와 동일하면 fail-fast.
+
+권장 워크플로우:
+
+```bash
+# 1) E2E 전용 DB 시드 (root 에서)
+scripts/setup_e2e.sh
+
+# 2) 백엔드를 .env.test 프로파일로 띄움 (별도 터미널)
+set -a && source .env.test && set +a
+uv run uvicorn tradingagents_web.main:app --port 8000
+
+# 3) 프론트도 같은 환경에서
+cd web && set -a && source ../.env.test && set +a && PORT=3030 npm run dev
+
+# 4) 다른 터미널에서 Playwright 실행
+cd web && npm run e2e
+```
+
+**워크트리에서 일하는 경우**: 부모 `.env` 를 그대로 복사하지 말 것. 운영 DB 절대
+경로가 따라 들어와서 위 가드들이 모두 회피된다. 워크트리 안에서는 `cp ../../.env.test .env`
+또는 `WEB_DATABASE_URL=sqlite:///./worktree.db` 로 강제하라. `dev.sh` 도 워크트리
++ 운영 DB 조합을 감지하면 거부한다 (`ALLOW_PROD_DB_IN_WORKTREE=1` 로만 우회).
+
 ## M2 — Run/History
 
 ### Quick demo (no LLM cost, fake runner)
