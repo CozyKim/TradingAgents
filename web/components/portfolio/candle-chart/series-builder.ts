@@ -66,7 +66,11 @@ function setLine(
 ) {
   ref.setData(
     values
-      .map((v, i) => (v == null ? null : { time: times[i] as Time, value: v }))
+      .map((v, i) =>
+        v == null || !Number.isFinite(v)
+          ? null
+          : { time: times[i] as Time, value: v },
+      )
       .filter((d): d is { time: Time; value: number } => d != null),
   );
 }

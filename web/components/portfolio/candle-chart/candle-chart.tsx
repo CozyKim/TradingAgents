@@ -24,7 +24,7 @@ import { CHART } from "./series-config";
 import { IntervalTabs } from "./interval-tabs";
 import { OhlcHeader } from "./ohlc-header";
 import { IndicatorToolbar } from "@/components/portfolio/indicator-toolbar";
-import { resample, bucketKey, alignSignals, type Interval } from "./resample";
+import { resample, alignSignals, type Interval } from "./resample";
 import {
   syncOptionalSeries,
   type OptionalSeries,
@@ -78,7 +78,6 @@ export function CandleChart({
 
   const [interval, setIntervalState] = useState<Interval>("1D");
   const [hovered, setHovered] = useState<PricePoint | null>(null);
-  const savedRangeRef = useRef<{ from: Time; to: Time } | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -94,16 +93,11 @@ export function CandleChart({
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderColor: CHART.axis },
       timeScale: { borderColor: CHART.axis, timeVisible: false },
-      // 가격 축/크로스헤어 라벨을 통화 컨텍스트에 맞게 포맷.
-      // 초기값으로 기본 USD 포맷을 등록하고, ctx 변화는 별도 effect에서 applyOptions로 갱신.
-      localization: {
-        priceFormatter: (price: number) =>
-          formatPrice(price, ctx, { usdDecimals: 0 }),
-      },
       autoSize: true,
     });
     // Lightweight Charts v5: addCandlestickSeries는 deprecated.
     // chart.addSeries(CandlestickSeries, options) 패턴 사용.
+    // priceFormat을 series에 적용해 거래량 등 별도 priceScale은 영향받지 않게 한다.
     const candle = chart.addSeries(CandlestickSeries, {
       upColor: CHART.up,
       downColor: CHART.down,
@@ -111,6 +105,11 @@ export function CandleChart({
       borderDownColor: CHART.down,
       wickUpColor: CHART.up,
       wickDownColor: CHART.down,
+      priceFormat: {
+        type: "custom",
+        formatter: (price: number) => formatPrice(price, ctx, { usdDecimals: 0 }),
+        minMove: 0.01,
+      },
     });
     candle.priceScale().applyOptions({ scaleMargins: { top: 0.05, bottom: 0.3 } });
     const volume = chart.addSeries(HistogramSeries, {
@@ -208,27 +207,19 @@ export function CandleChart({
     ) => {
       ref.setData(
         values
-          .map((v, i) => (v == null ? null : { time: ts[i] as Time, value: v }))
+          .map((v, i) =>
+            v == null || !Number.isFinite(v)
+              ? null
+              : { time: ts[i] as Time, value: v },
+          )
           .filter((d): d is { time: Time; value: number } => d != null),
       );
     };
     setLine(volumeMaRef.current, sma(volumes, 20), times);
 
-    if (savedRangeRef.current) {
-      try {
-        const range = savedRangeRef.current;
-        const fromStr = typeof range.from === "string" ? range.from : String(range.from);
-        const snapped = {
-          from: bucketKey(fromStr, interval) as Time,
-          to: range.to,
-        };
-        chartRef.current?.timeScale().setVisibleRange(snapped);
-      } catch {
-        chartRef.current?.timeScale().fitContent();
-      }
-    } else {
-      chartRef.current?.timeScale().fitContent();
-    }
+    // 인터벌이 바뀔 때마다 전체를 다시 맞춰 보여준다.
+    // (이전엔 daily visible range를 주/월에 그대로 적용했으나 봉 폭이 달라져 우측 공백이 생겼음.)
+    chartRef.current?.timeScale().fitContent();
   }, [series]);
 
   // 신호 마커 — 데이터 effect에서 분리하여 signals 변경이 viewport(time scale)를 리셋하지 않도록 함.
@@ -272,13 +263,15 @@ export function CandleChart({
     });
   }, [avgCost, ctx.currency, ctx.fxRate]);
 
-  // 통화/환율 변경 시 가격 축 포맷터 재적용 — chart 자체는 재생성하지 않음.
+  // 통화/환율 변경 시 캔들 시리즈의 priceFormat 재적용 — chart 자체는 재생성하지 않음.
+  // (글로벌 localization.priceFormatter는 거래량 축까지 덮어쓰므로 사용하지 않는다.)
   useEffect(() => {
-    if (!chartRef.current) return;
-    chartRef.current.applyOptions({
-      localization: {
-        priceFormatter: (price: number) =>
-          formatPrice(price, ctx, { usdDecimals: 0 }),
+    if (!candleRef.current) return;
+    candleRef.current.applyOptions({
+      priceFormat: {
+        type: "custom",
+        formatter: (price: number) => formatPrice(price, ctx, { usdDecimals: 0 }),
+        minMove: 0.01,
       },
     });
   }, [ctx.currency, ctx.fxRate]);
@@ -296,8 +289,6 @@ export function CandleChart({
   }, [series, settings]);
 
   const handleIntervalChange = (next: Interval) => {
-    const range = chartRef.current?.timeScale().getVisibleRange();
-    if (range) savedRangeRef.current = { from: range.from, to: range.to };
     setIntervalState(next);
   };
 
