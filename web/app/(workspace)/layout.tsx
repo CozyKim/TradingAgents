@@ -10,13 +10,13 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
     <CurrencyProvider>
       <div className="flex min-h-screen bg-bg-0">
         <Sidebar />
-        <main className="flex-1 flex flex-col pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0">
+        <main className="flex-1 min-w-0 flex flex-col pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0">
           <MobileTopBar />
           <header className="hidden md:flex sticky top-0 z-20 items-center justify-end gap-2 px-8 py-3 bg-bg-0/80 backdrop-blur supports-[backdrop-filter]:bg-bg-0/70">
             <RunningRunsIndicator />
             <UnreadBell />
           </header>
-          <div className="flex-1">{children}</div>
+          <div className="flex-1 min-w-0">{children}</div>
         </main>
         <TabBar />
       </div>

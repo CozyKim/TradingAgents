@@ -60,7 +60,7 @@ export function AgentCard({
   return (
     <div
       className={cn(
-        "rounded-2xl bg-bg-1 px-4 py-3.5 shadow-card ring-1 ring-inset",
+        "min-w-0 break-words rounded-2xl bg-bg-1 px-4 py-3.5 shadow-card ring-1 ring-inset",
         style.ring,
       )}
     >

@@ -74,3 +74,19 @@
     transform: scale(0.985);
   }
 }
+
+/* Prevent iOS Safari auto-zoom on input focus.
+   iOS zooms inputs whose computed font-size < 16px and does not zoom back out.
+   The OR-list catches:
+     - touch devices (iPhone/Android Safari/Chrome — primary target)
+     - narrow viewports (devtools mobile emulation, small windows)
+   Desktop wide viewports keep the 14–15px rhythm.
+   !important is needed because Tailwind utility classes (text-sm/text-[15px])
+   beat element selectors like `textarea`. */
+@media (hover: none) and (pointer: coarse), (max-width: 768px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
