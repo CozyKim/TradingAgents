@@ -6,7 +6,11 @@ from pydantic import BaseModel
 
 class PricePoint(BaseModel):
     date: date
+    open: float
+    high: float
+    low: float
     close: float
+    volume: int
 
 
 class PriceHistoryResponse(BaseModel):

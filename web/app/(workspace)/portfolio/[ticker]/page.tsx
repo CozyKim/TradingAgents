@@ -7,8 +7,7 @@ import { useHoldings } from "@/hooks/use-holdings";
 import { useRunList } from "@/hooks/use-runs";
 import { usePriceHistory } from "@/hooks/use-price-history";
 import { useChartSettings } from "@/hooks/use-chart-settings";
-import { ChartStack } from "@/components/portfolio/chart-stack";
-import { SignalMarker } from "@/components/portfolio/price-chart";
+import { CandleChart, type SignalMarker } from "@/components/portfolio/candle-chart";
 import { SignalBadge } from "@/components/shared/signal-badge";
 import { useCurrency, formatPrice } from "@/lib/currency";
 
@@ -17,7 +16,7 @@ export default function PortfolioDetail() {
   const ticker = params.ticker.toUpperCase();
   const { data: holdings } = useHoldings();
   const { data: history } = useRunList({ ticker, page_size: 50 });
-  const { data: price, isLoading: priceLoading } = usePriceHistory(ticker, 90);
+  const { data: price, isLoading: priceLoading } = usePriceHistory(ticker, 365);
   const { settings, setSettings, reset } = useChartSettings();
   const ctx = useCurrency();
 
@@ -102,7 +101,7 @@ export default function PortfolioDetail() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Price (90d)</CardTitle>
+          <CardTitle>Price</CardTitle>
         </CardHeader>
         <CardContent>
           {priceLoading ? (
@@ -112,13 +111,13 @@ export default function PortfolioDetail() {
               aria-label="Loading prices"
             />
           ) : (
-            <ChartStack
+            <CandleChart
               points={price?.points ?? []}
               signals={signals}
               avgCost={holding?.avg_cost}
               settings={settings}
-              onChange={setSettings}
-              onReset={reset}
+              onSettingsChange={setSettings}
+              onSettingsReset={reset}
             />
           )}
         </CardContent>

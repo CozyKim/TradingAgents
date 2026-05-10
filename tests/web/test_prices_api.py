@@ -28,7 +28,16 @@ def _login(app_with_test_db, client):
 def test_get_price_history(monkeypatch, app_with_test_db, client):
     fake = PriceHistoryResponse(
         ticker="AAPL",
-        points=[PricePoint(date=date(2026, 4, 22), close=181.5)],
+        points=[
+            PricePoint(
+                date=date(2026, 4, 22),
+                open=180.0,
+                high=182.5,
+                low=179.4,
+                close=181.5,
+                volume=12_345_678,
+            ),
+        ],
         last_close=181.5,
     )
     monkeypatch.setattr(prices_svc, "get_price_history", lambda t, days=90: fake)

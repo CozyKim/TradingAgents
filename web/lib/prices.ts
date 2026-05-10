@@ -2,7 +2,11 @@ import { api } from "./api";
 
 export interface PricePoint {
   date: string;
+  open: number;
+  high: number;
+  low: number;
   close: number;
+  volume: number;
 }
 
 export interface PriceHistoryResponse {
