@@ -27,12 +27,76 @@
 
 # TradingAgents: Multi-Agents LLM Financial Trading Framework
 
-> **Fork note (CozyKim/TradingAgents):** 이 포크는 업스트림 CLI 위에 FastAPI 백엔드(`tradingagents_web/`)와 Next.js Toss 스타일 워크스페이스(`web/`)를 추가합니다. 포트폴리오 모니터링, cron 기반 스케줄, 알림(in-app + Telegram), 비교 뷰, PWA, SQLite 백업/복원 등이 포함되며 셋업·운영 가이드는 [`DEV.md`](./DEV.md)에 있습니다.
+> **Fork note (CozyKim/TradingAgents):** 이 포크는 업스트림 CLI 위에 FastAPI 백엔드(`tradingagents_web/`)와 Next.js Toss 스타일 워크스페이스(`web/`)를 얹은 개인용 분석 워크벤치예요. 포트폴리오 모니터링, cron 기반 자동 분석, 알림(in-app + Telegram), 분석 비교 뷰, PWA, SQLite 백업/복원을 함께 제공합니다. 셋업·운영 가이드는 [`DEV.md`](./DEV.md)에 정리해 두었습니다.
+
+## Web Workspace (this fork)
+
+> 아래 캡처는 모두 격리된 데모 DB(`scripts/seed_screenshots.py`)로 찍은 **더미 데이터**입니다. 매입가·평가액·시그널은 시드 스크립트가 만든 라운드 숫자라 실제 포지션과는 무관합니다.
 
 <p align="center">
-  <img src="assets/web-login-desktop.png" alt="Web workspace (desktop)" width="78%">
-  <img src="assets/web-login-mobile.png"  alt="Web workspace (mobile)"  width="20%">
+  <img src="assets/web/dashboard.png" alt="대시보드 — 평가액, 평가손익, 보유 종목 시그널, 진행 중인 분석" width="92%">
 </p>
+
+### Dashboard · Portfolio
+
+평가액, 미실현 손익, 보유 종목 시그널, 진행 중인 분석을 한 화면에서 한눈에 볼 수 있어요. 보유 종목마다 평균 단가와 실시간 가격이 함께 표시되고, monitor 스위치를 켜 두면 평일 마감 30분 뒤 자동 분석 스케줄이 자동으로 생성됩니다.
+
+<p align="center">
+  <img src="assets/web/portfolio.png"        alt="포트폴리오 — 보유 종목과 모니터 토글" width="48%">
+  <img src="assets/web/portfolio-detail.png" alt="포트폴리오 상세 — 90일 캔들과 분석 히스토리" width="48%">
+</p>
+
+### Run · History · Compare
+
+티커와 분석가(4종), 토론 라운드 수를 골라 분석을 실행하면 SSE로 phase별 진행 상황을 실시간으로 보여줍니다. 완료된 분석은 Market / Sentiment / News / Fundamentals 보고서로 정리되며, 두 건을 고르면 좌우로 나란히 비교할 수 있어요.
+
+<p align="center">
+  <img src="assets/web/run-form.png"       alt="실행 — 새 분석 실행 폼" width="48%">
+  <img src="assets/web/history-detail.png" alt="분석 상세 — 마크다운 보고서와 최종 결정" width="48%">
+</p>
+
+<p align="center">
+  <img src="assets/web/history-list.png"    alt="분석 기록 — 티커·상태·결정으로 필터링" width="48%">
+  <img src="assets/web/history-compare.png" alt="비교 — A/B 좌우 비교" width="48%">
+</p>
+
+### Schedules · Alerts · Notifications
+
+cron 식으로 자동 분석을 예약할 수 있어요. monitor가 켜진 보유 종목은 `source=holding`으로 자동 등록됩니다. 시그널이 바뀌거나 신뢰도가 임계값 이상 움직일 때, 또는 실행/스케줄이 실패할 때 in-app 알림과 Telegram 메시지가 함께 도착합니다. 트리거별 on/off와 임계값은 알림 설정 페이지에서 자유롭게 조정할 수 있어요.
+
+<p align="center">
+  <img src="assets/web/schedules.png" alt="스케줄 — cron 기반 자동 분석" width="48%">
+  <img src="assets/web/alerts.png"    alt="알림 인박스" width="48%">
+</p>
+
+<p align="center">
+  <img src="assets/web/settings-notifications.png" alt="알림 설정 — Telegram 토큰과 트리거 토글" width="60%">
+</p>
+
+### Mobile (installable PWA)
+
+<p align="center">
+  <img src="assets/web/mobile-dashboard.png" alt="모바일 대시보드" width="28%">
+  <img src="assets/web/mobile-portfolio.png" alt="모바일 포트폴리오" width="28%">
+  <img src="assets/web/mobile-more.png"      alt="모바일 더보기" width="28%">
+</p>
+
+서비스 워커, 오프라인 fallback, 하단 탭바를 갖춘 설치형 PWA입니다. iOS Safari에서 `공유 → 홈 화면에 추가`로 설치하면 오프라인 상태에서도 캐시된 화면을 다시 열 수 있어요.
+
+### 빠른 시작
+
+```bash
+uv sync                                   # Python 의존성
+(cd web && npm install)                   # 프론트엔드 의존성
+cp .env.example .env                      # secrets (DEV.md 참고)
+uv run alembic upgrade head               # DB 마이그레이션
+uv run tradingagents-web set-password     # 최초 비밀번호 설정
+./dev.sh                                  # backend(8000) + web(3000) 동시 실행
+```
+
+Docker, Telegram 봇 연결, E2E 격리 DB, SQLite 백업·복원 같은 상세 가이드는 [`DEV.md`](./DEV.md)에 모아 두었습니다.
+
+---
 
 ## News
 - [2026-05] **Fork: Toss-style UI rebrand** — 워크스페이스 전반(대시보드/포트폴리오/스케줄/알림)을 Toss 스타일로 리디자인하고 `TickerCombobox` 기반의 한글·영문 통합 티커 검색을 도입.
