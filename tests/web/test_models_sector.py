@@ -1,9 +1,13 @@
 """Tests for the Sector / SectorRun / SectorReport ORM models."""
 from __future__ import annotations
 
+import subprocess
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
+import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 
 from tradingagents_web.models import Sector, SectorReport, SectorRun
@@ -101,3 +105,27 @@ def test_sector_report_unique_version_per_sector(app_with_test_db):
         db.rollback()
     finally:
         db.close()
+
+
+def test_preset_sectors_seeded(tmp_path, monkeypatch):
+    """The add-sectors migration seeds 6 preset sectors via bulk_insert."""
+    REPO_ROOT = Path(__file__).resolve().parents[2]
+    db_file = tmp_path / "seed.db"
+    monkeypatch.setenv("WEB_DATABASE_URL", f"sqlite:///{db_file}")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        capture_output=True, text=True, check=False, cwd=REPO_ROOT,
+    )
+    assert result.returncode == 0, f"alembic upgrade failed: {result.stderr}"
+
+    engine = sa.create_engine(f"sqlite:///{db_file}")
+    with engine.begin() as conn:
+        rows = conn.execute(
+            sa.text("SELECT slug FROM sectors WHERE is_preset = 1")
+        ).all()
+    slugs = {r[0] for r in rows}
+    assert slugs >= {
+        "ai", "power", "semiconductor-memory",
+        "semiconductor-logic", "robotics", "space",
+    }
