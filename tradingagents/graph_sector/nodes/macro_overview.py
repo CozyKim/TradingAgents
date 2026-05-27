@@ -10,6 +10,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from tradingagents.graph_sector.nodes._tool_loop import invoke_with_tool_loop
 from tradingagents.graph_sector.state import SectorState
 from tradingagents.graph_sector.tools.web_search import SearchBudget, make_web_search_tool
 
@@ -28,10 +29,11 @@ SYSTEM_PROMPT = """당신은 산업 분석가다. 주어진 산업의 **거시 �
 
 def make_macro_overview_node(llm, budget: SearchBudget | None) -> Callable:
     def node(state: SectorState) -> dict[str, Any]:
+        tool = None
         if budget is not None:
             budget.current_node = "macro_overview"
-            tools = [make_web_search_tool(budget)]
-            chat = llm.bind_tools(tools)
+            tool = make_web_search_tool(budget)
+            chat = llm.bind_tools([tool])
         else:
             chat = llm
 
@@ -42,7 +44,10 @@ def make_macro_overview_node(llm, budget: SearchBudget | None) -> Callable:
                 f"검색 키워드 후보: {', '.join(state.keywords) or '(없음)'}"
             )),
         ]
-        ai = chat.invoke(messages)
+        if tool is not None:
+            ai, _ = invoke_with_tool_loop(chat, tool, messages)
+        else:
+            ai = chat.invoke(messages)
         content = ai.content if isinstance(ai.content, str) else str(ai.content)
         return {
             "macro_report": content,
