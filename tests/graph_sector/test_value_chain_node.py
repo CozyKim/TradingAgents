@@ -53,3 +53,32 @@ def test_value_chain_fallback_when_retry_fails():
     # Fallback: empty mermaid, value_chain_md preserves raw text
     assert result["value_chain_mermaid"] == ""
     assert "garbage" in result["value_chain_md"]
+
+
+def test_value_chain_rejects_malformed_stages_shape():
+    """JSON parses but stages-shape is wrong → treat as parse failure (→ retry → fallback).
+
+    Without shape validation, _render_md would raise TypeError on these
+    payloads. The retry path must catch them as 'parse failed'.
+    """
+    bad_payloads = [
+        {"stages": "not a list", "mermaid": "graph LR"},         # stages must be list
+        {"stages": [{"name": "Upstream"}, "raw string"],          # entry must be dict
+         "mermaid": "graph LR"},
+        {"stages": [{"name": "Upstream",
+                     "key_companies": "ASML, AMAT"}],             # key_companies must be list
+         "mermaid": "graph LR"},
+        {"stages": [{"name": "Upstream",
+                     "key_companies": ["ASML", 123]}],            # all items must be str
+         "mermaid": "graph LR"},
+        {"stages": [{"name": "Upstream"}],
+         "mermaid": ["not", "a", "string"]},                      # mermaid must be str
+    ]
+    for bad in bad_payloads:
+        llm = MagicMock()
+        llm.bind_tools.return_value = llm
+        llm.invoke.return_value = AIMessage(content=json.dumps(bad))
+        node = make_value_chain_node(llm, budget=None)
+        result = node(SectorState(sector_slug="x", sector_name="X", keywords=[]))
+        # Fallback path triggered (retry exhausted with same malformed shape)
+        assert result["value_chain_mermaid"] == ""

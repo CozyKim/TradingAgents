@@ -42,9 +42,26 @@ def _try_parse(content: str) -> dict | None:
         data = json.loads(s)
     except json.JSONDecodeError:
         return None
-    if isinstance(data, dict) and "stages" in data and "mermaid" in data:
-        return data
-    return None
+    # Shape validation: parsing alone isn't enough. _render_md() iterates
+    # stages and joins key_companies — if any of those have the wrong type
+    # the node would crash with TypeError downstream and skip the retry path.
+    if not isinstance(data, dict):
+        return None
+    if not isinstance(data.get("mermaid"), str):
+        return None
+    stages = data.get("stages")
+    if not isinstance(stages, list):
+        return None
+    for stage in stages:
+        if not isinstance(stage, dict):
+            return None
+        companies = stage.get("key_companies")
+        if companies is not None and not (
+            isinstance(companies, list)
+            and all(isinstance(c, str) for c in companies)
+        ):
+            return None
+    return data
 
 
 def _render_md(stages: list[dict]) -> str:
