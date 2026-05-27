@@ -28,6 +28,16 @@ SYSTEM_PROMPT = """당신은 산업 분석가다. 주어진 산업의 **거시 �
 
 
 def make_macro_overview_node(llm, budget: SearchBudget | None) -> Callable:
+    """Build the macro_overview node.
+
+    NOTE on budget lifetime: the returned closure captures ``budget`` by
+    reference. Callers MUST rebuild the graph (and supply a fresh
+    ``SearchBudget``) for every analysis run, otherwise call counts leak
+    across runs and later analyses will silently skip web_search once the
+    cap is hit. ``RealSectorRunner`` (Task 13) does this — it calls
+    ``build_sector_graph(..., budget=SearchBudget())`` inside each
+    ``run()``. Do not move the graph compile to module scope.
+    """
     def node(state: SectorState) -> dict[str, Any]:
         tool = None
         if budget is not None:

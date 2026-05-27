@@ -68,6 +68,13 @@ def _invoke(chat, tool, messages):
 
 
 def make_value_chain_node(llm, budget: SearchBudget | None) -> Callable:
+    """Build the value_chain node.
+
+    NOTE on budget lifetime: same closure-capture rule as
+    ``make_macro_overview_node``. The graph must be rebuilt per analysis
+    run with a fresh ``SearchBudget``; otherwise web_search call counts
+    leak across runs.
+    """
     def node(state: SectorState) -> dict[str, Any]:
         tool = None
         if budget is not None:
