@@ -63,14 +63,17 @@ def make_web_search_tool(budget: SearchBudget):
         api_key = os.environ.get("TAVILY_API_KEY")
         try:
             client = TavilyClient(api_key=api_key)
+            # Charge the budget BEFORE the network call so that 429s, timeouts,
+            # and other post-construction failures still count toward the cap.
+            # Otherwise a ReAct loop hitting a flaky/over-rate-limited endpoint
+            # would burn unbounded retries against the same node.
+            budget.total_used += 1
+            if budget.current_node:
+                budget.per_node_used[budget.current_node] = budget.per_node_used.get(budget.current_node, 0) + 1
             raw = client.search(query, max_results=5, search_depth="advanced")
         except Exception:  # noqa: BLE001 — never let search crash the graph
             logger.exception("web_search: tavily call failed")
             return []
-
-        budget.total_used += 1
-        if budget.current_node:
-            budget.per_node_used[budget.current_node] = budget.per_node_used.get(budget.current_node, 0) + 1
 
         return [
             {
