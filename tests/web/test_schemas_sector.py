@@ -2,10 +2,9 @@ import pytest
 from pydantic import ValidationError
 
 from tradingagents_web.schemas.sector import (
-    CompanyShare,
     CandidateTicker,
+    CompanyShare,
     SectorCreate,
-    SectorReportOut,
 )
 
 

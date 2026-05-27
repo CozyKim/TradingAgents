@@ -49,7 +49,7 @@ class SectorCreate(BaseModel):
     keywords: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def fill_slug(self) -> "SectorCreate":
+    def fill_slug(self) -> SectorCreate:
         if not self.slug:
             self.slug = slugify(self.name)
         return self
