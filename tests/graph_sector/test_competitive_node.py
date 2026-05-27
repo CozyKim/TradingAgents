@@ -46,3 +46,20 @@ def test_unknown_basis_fallback():
     node = make_competitive_node(llm, budget=None)
     result = node(SectorState(sector_slug="x", sector_name="X", keywords=[]))
     assert result["companies"][0]["share_basis"] == "unknown"
+
+
+def test_share_value_non_numeric_falls_back_to_zero():
+    """LLM may return 'N/A', null, '?'... the node must not crash."""
+    for bad_value in [None, "N/A", "?", "n/a", "정보 없음"]:
+        payload = {"companies": [{
+            "name": "X", "stage": "?", "share_value": bad_value,
+            "share_basis": "estimated", "confidence": "medium", "sources": [],
+        }]}
+        llm = MagicMock()
+        llm.bind_tools.return_value = llm
+        llm.invoke.return_value = AIMessage(content=json.dumps(payload))
+        node = make_competitive_node(llm, budget=None)
+        result = node(SectorState(sector_slug="x", sector_name="X", keywords=[]))
+        assert result["companies"][0]["share_value"] == 0.0
+        # Falling back to 0.0 means the original basis claim is no longer trustworthy
+        assert result["companies"][0]["share_basis"] == "unknown"

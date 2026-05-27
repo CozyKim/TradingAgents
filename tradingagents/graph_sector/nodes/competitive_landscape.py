@@ -60,11 +60,24 @@ def _normalize_company(c: dict) -> dict:
     confidence = c.get("confidence", "low")
     if confidence not in VALID_CONFIDENCE:
         confidence = "low"
+    # share_value: LLM sometimes returns null, "N/A", "?", "정보 없음" — any
+    # non-numeric input collapses to 0.0 AND downgrades basis to "unknown",
+    # because a missing number means we no longer trust the basis label either.
+    raw_share = c.get("share_value", 0.0)
+    if raw_share is None:
+        share_value = 0.0
+        basis = "unknown"
+    else:
+        try:
+            share_value = float(raw_share)
+        except (TypeError, ValueError):
+            share_value = 0.0
+            basis = "unknown"
     return {
         "name": str(c.get("name", "Unknown")),
         "ticker": c.get("ticker"),
         "stage": str(c.get("stage", "")),
-        "share_value": float(c.get("share_value", 0.0)),
+        "share_value": share_value,
         "share_basis": basis,
         "confidence": confidence,
         "sources": [str(u) for u in c.get("sources", []) if u],
