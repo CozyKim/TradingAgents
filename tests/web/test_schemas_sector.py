@@ -40,3 +40,22 @@ def test_sector_create_explicit_long_slug_rejected():
 def test_sector_create_explicit_empty_slug_rejected():
     with pytest.raises(ValidationError):
         SectorCreate(name="ok", slug="")
+
+
+def test_sector_create_explicit_non_url_safe_slug_rejected():
+    """Slash, whitespace, uppercase, etc. must not slip through."""
+    for bad in ["foo/bar", "with space", "UPPER", "trailing-", "double--dash"]:
+        with pytest.raises(ValidationError):
+            SectorCreate(name="ok", slug=bad)
+
+
+def test_sector_create_explicit_safe_slug_accepted():
+    """Lowercase ASCII + dashes is canonical."""
+    s = SectorCreate(name="ok", slug="quantum-computing")
+    assert s.slug == "quantum-computing"
+
+
+def test_sector_create_explicit_korean_slug_accepted():
+    """slugify accepts Unicode word chars (Korean syllables) verbatim."""
+    s = SectorCreate(name="ok", slug="반도체-메모리")
+    assert s.slug == "반도체-메모리"

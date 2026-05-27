@@ -60,6 +60,16 @@ class SectorCreate(BaseModel):
                     "slug could not be derived from name; supply 'slug' explicitly"
                 )
             self.slug = generated
+        else:
+            # Explicit slugs must already be URL-safe — they are used as path
+            # segments in /sectors/{slug}. Reject anything slugify() would
+            # rewrite (whitespace, '/', uppercase, repeated dashes, etc.).
+            normalized = slugify(self.slug)[:SLUG_MAX_LENGTH].strip("-")
+            if normalized != self.slug:
+                raise ValueError(
+                    f"slug {self.slug!r} is not URL-safe; "
+                    f"use {normalized!r} or supply a different slug"
+                )
         return self
 
 
