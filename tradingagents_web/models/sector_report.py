@@ -19,10 +19,10 @@ class SectorReport(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     sector_id: Mapped[int] = mapped_column(
-        ForeignKey("sectors.id"), index=True
+        ForeignKey("sectors.id", ondelete="CASCADE"), index=True
     )
     run_id: Mapped[str] = mapped_column(
-        ForeignKey("sector_runs.id"), unique=True
+        ForeignKey("sector_runs.id", ondelete="CASCADE"), unique=True
     )
     version: Mapped[int] = mapped_column(Integer)
     report_md: Mapped[str] = mapped_column(Text)

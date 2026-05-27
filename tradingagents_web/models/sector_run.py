@@ -19,7 +19,7 @@ class SectorRun(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     sector_id: Mapped[int] = mapped_column(
-        ForeignKey("sectors.id"), index=True
+        ForeignKey("sectors.id", ondelete="CASCADE"), index=True
     )
     status: Mapped[str] = mapped_column(String(16))  # running|completed|failed
     phase: Mapped[str | None] = mapped_column(String(32), nullable=True)
