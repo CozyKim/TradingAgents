@@ -42,16 +42,24 @@ class CandidateTicker(BaseModel):
     reason: str
 
 
+SLUG_MAX_LENGTH = 64  # mirrors sectors.slug String(64) column
+
+
 class SectorCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
-    slug: str | None = None
+    slug: str | None = Field(default=None, min_length=1, max_length=SLUG_MAX_LENGTH)
     description: str | None = None
     keywords: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def fill_slug(self) -> SectorCreate:
         if not self.slug:
-            self.slug = slugify(self.name)
+            generated = slugify(self.name)[:SLUG_MAX_LENGTH].strip("-")
+            if not generated:
+                raise ValueError(
+                    "slug could not be derived from name; supply 'slug' explicitly"
+                )
+            self.slug = generated
         return self
 
 
