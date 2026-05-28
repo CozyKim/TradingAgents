@@ -164,3 +164,22 @@ def test_start_run_csrf_rejected_without_xhr(auth_client, monkeypatch):
     ).json()
     resp = auth_client.post(f"/api/sectors/{created['id']}/runs", json={})
     assert resp.status_code == 403
+
+
+def test_start_run_returns_503_without_fake_runner(auth_client, monkeypatch):
+    """Real LLM wiring is deferred — production POST must fail fast at 503.
+
+    Without this guard the route would 202 and then silently crash in the
+    background driver with NotImplementedError once a real runner tried to
+    invoke an unwired LLM factory.
+    """
+    monkeypatch.delenv("WEB_FAKE_RUNNER", raising=False)
+    created = auth_client.post(
+        "/api/sectors", headers=XHR_HEADERS, json={"name": "Z"}
+    ).json()
+    resp = auth_client.post(
+        f"/api/sectors/{created['id']}/runs",
+        headers=XHR_HEADERS, json={},
+    )
+    assert resp.status_code == 503
+    assert "WEB_FAKE_RUNNER" in resp.json()["detail"]

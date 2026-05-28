@@ -40,7 +40,6 @@ from tradingagents_web.services.sector_fake_runner import (
     FakeSectorRunner,
     SectorRunRequest,
 )
-from tradingagents_web.services.sector_runner import RealSectorRunner
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +63,14 @@ def set_background_session_factory(factory: Callable[[], OrmSession]) -> None:
     _session_factory = factory
 
 
+class SectorRunnerNotConfigured(RuntimeError):
+    """Production LLM wiring for sector runs is not yet available.
+
+    Raised at the API edge so the user sees a 503 immediately rather than
+    a 202-then-silent-failure in the background task.
+    """
+
+
 def _build_runner(bus: EventBus):
     """Pick FakeSectorRunner vs RealSectorRunner based on WEB_FAKE_RUNNER.
 
@@ -73,25 +80,26 @@ def _build_runner(bus: EventBus):
     Returns:
         A runner exposing an awaitable ``run(SectorRunRequest)`` method.
 
-    Notes:
-        TODO(task-later): wire a real LLM factory. Today `tradingagents_web`
-        has no clean ``(model_name) -> chat`` helper, so the RealSectorRunner
-        path is constructed with a placeholder factory that raises
-        ``NotImplementedError`` at first use. This is fine because all current
-        tests opt into ``WEB_FAKE_RUNNER=true``. Production wiring lands when
-        a real LLM helper is introduced in a follow-up task.
+    Raises:
+        SectorRunnerNotConfigured: when ``WEB_FAKE_RUNNER`` is not true.
+            See module note below — real LLM wiring lands in a follow-up
+            task; until then, production requests are rejected with 503
+            at the API edge instead of silently failing in the background.
     """
     if os.environ.get("WEB_FAKE_RUNNER", "false").lower() == "true":
         return FakeSectorRunner(bus)
-
-    def _llm_not_wired(_model: str | None) -> object:
-        raise NotImplementedError(
-            "Real LLM factory for RealSectorRunner is not yet wired. "
-            "Set WEB_FAKE_RUNNER=true or implement build_chat_llm in a "
-            "follow-up task."
-        )
-
-    return RealSectorRunner(bus, llm_factory=_llm_not_wired)
+    # TODO(follow-up task): wire a real LLM factory.
+    # tradingagents_web does not yet expose a clean
+    # ``Callable[[str | None], object]`` helper that RealSectorRunner can
+    # adapt. The existing runs.py path builds TradingAgentsGraph internally
+    # via DEFAULT_CONFIG + provider/model strings, which doesn't fit the
+    # sector runner's per-LLM injection model. Until that helper exists, we
+    # explicitly reject production sector-run requests rather than 202ing
+    # and crashing in the background.
+    raise SectorRunnerNotConfigured(
+        "Sector analysis requires WEB_FAKE_RUNNER=true until the real LLM "
+        "factory is wired. See sectors.py::_build_runner TODO."
+    )
 
 
 def _to_out(sector: Sector, db: OrmSession) -> SectorOut:
@@ -215,6 +223,15 @@ async def start_sector_run(
     sector = db.get(Sector, sector_id)
     if sector is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "sector not found")
+
+    # Fail fast at the edge if the runner can't be built — we'd rather 503
+    # the request than 202-then-silent-fail in the background driver.
+    try:
+        _build_runner(get_event_bus())
+    except SectorRunnerNotConfigured as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)
+        ) from exc
 
     busy = db.execute(
         select(SectorRun)
