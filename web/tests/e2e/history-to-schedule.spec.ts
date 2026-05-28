@@ -39,7 +39,7 @@ test.describe("history → schedule prefill", () => {
       .fill(TICKER);
     // Combobox: confirm the AAPL option to seed the ticker state.
     await page.keyboard.press("Enter");
-    await page.getByRole("button", { name: /분석.*시작|create|start/i }).click();
+    await page.getByRole("button", { name: /분석 실행하기/ }).click();
     // Routed to /run/<run_id> once submitted.
     await page.waitForURL(/\/run\/[^/]+/, { timeout: 15_000 });
 
