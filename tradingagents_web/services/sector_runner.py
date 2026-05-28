@@ -14,7 +14,9 @@ from typing import Any
 
 from tradingagents.graph_sector.sector_graph import build_sector_graph
 from tradingagents.graph_sector.state import SectorState
-from tradingagents.graph_sector.tools.web_search import SearchBudget
+
+# SearchBudget is constructed inside SectorState.from_request() — no direct
+# import here. We reuse state.budget so env vars actually take effect.
 from tradingagents_web.services.event_bus import AnalysisEvent, EventBus
 from tradingagents_web.services.sector_fake_runner import (
     SectorRunRequest,
@@ -65,14 +67,19 @@ class RealSectorRunner:
         # SearchBudget counter across runs via node closure capture.
         deep_llm = self.llm_factory(request.llm_deep_model)
         quick_llm = self.llm_factory(request.llm_quick_model)
-        budget = SearchBudget()
-        graph = build_sector_graph(
-            quick_llm=quick_llm, deep_llm=deep_llm, budget=budget,
-        )
+        # Build state FIRST so its env-driven budget (SECTOR_SEARCH_BUDGET /
+        # SECTOR_NODE_SEARCH_BUDGET) is what actually gates web_search calls.
+        # Reuse the same budget object in the graph closures — otherwise the
+        # node closures would cap at the SearchBudget() default (12/3) and
+        # ignore operator overrides.
         state = SectorState.from_request(
             sector_slug=request.sector_slug,
             sector_name=request.sector_name,
             keywords=request.keywords,
+        )
+        budget = state.budget
+        graph = build_sector_graph(
+            quick_llm=quick_llm, deep_llm=deep_llm, budget=budget,
         )
 
         seen_phases: set[str] = set()
