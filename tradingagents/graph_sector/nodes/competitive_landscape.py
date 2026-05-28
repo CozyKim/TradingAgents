@@ -79,6 +79,17 @@ def _normalize_company(c: dict) -> dict:
     if share_value < 0.0 or share_value > 100.0:
         share_value = max(0.0, min(100.0, share_value))
         basis = "unknown"
+    # sources: LLM sometimes returns a bare URL string, null, or a non-list.
+    # Wrap singletons, treat null/non-list as empty so a downstream
+    # `list[HttpUrl]` validator doesn't crash and we don't accidentally
+    # split a URL into per-character entries.
+    raw_sources = c.get("sources")
+    if isinstance(raw_sources, str):
+        sources_iter = [raw_sources]
+    elif isinstance(raw_sources, list):
+        sources_iter = raw_sources
+    else:
+        sources_iter = []
     return {
         "name": str(c.get("name", "Unknown")),
         "ticker": c.get("ticker"),
@@ -86,7 +97,7 @@ def _normalize_company(c: dict) -> dict:
         "share_value": share_value,
         "share_basis": basis,
         "confidence": confidence,
-        "sources": [str(u) for u in c.get("sources", []) if u],
+        "sources": [str(u) for u in sources_iter if u],
     }
 
 

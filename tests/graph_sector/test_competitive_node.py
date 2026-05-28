@@ -85,6 +85,35 @@ def test_share_value_out_of_range_clamped():
         assert result["companies"][0]["share_basis"] == "unknown"
 
 
+def test_sources_string_wrapped_to_singleton_list():
+    """LLM may return sources as a bare URL string — wrap into [url], do not split chars."""
+    payload = {"companies": [{
+        "name": "X", "stage": "?", "share_value": 50,
+        "share_basis": "reported", "confidence": "high",
+        "sources": "https://example.com",  # bare string, not list
+    }]}
+    llm = MagicMock()
+    llm.bind_tools.return_value = llm
+    llm.invoke.return_value = AIMessage(content=json.dumps(payload))
+    node = make_competitive_node(llm, budget=None)
+    result = node(SectorState(sector_slug="x", sector_name="X", keywords=[]))
+    assert result["companies"][0]["sources"] == ["https://example.com"]
+
+
+def test_sources_null_becomes_empty():
+    payload = {"companies": [{
+        "name": "X", "stage": "?", "share_value": 50,
+        "share_basis": "reported", "confidence": "high",
+        "sources": None,
+    }]}
+    llm = MagicMock()
+    llm.bind_tools.return_value = llm
+    llm.invoke.return_value = AIMessage(content=json.dumps(payload))
+    node = make_competitive_node(llm, budget=None)
+    result = node(SectorState(sector_slug="x", sector_name="X", keywords=[]))
+    assert result["companies"][0]["sources"] == []
+
+
 def test_companies_with_non_dict_elements_falls_back():
     """JSON parses but {"companies": ["ASML"]} — element is a str, not dict.
 
