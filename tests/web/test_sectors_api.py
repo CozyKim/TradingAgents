@@ -99,3 +99,68 @@ def test_delete_without_xhr_header_is_csrf_rejected(auth_client):
 def test_unauth_returns_401(client_unauth):
     resp = client_unauth.get("/api/sectors")
     assert resp.status_code in (401, 403)
+
+
+# ---------------------------------------------------------------------------
+# Task 15: start-run + SSE stream endpoints
+# ---------------------------------------------------------------------------
+
+
+def test_start_run_returns_202(auth_client, monkeypatch):
+    monkeypatch.setenv("WEB_FAKE_RUNNER", "true")
+    created = auth_client.post(
+        "/api/sectors", headers=XHR_HEADERS, json={"name": "AI"}
+    ).json()
+    resp = auth_client.post(
+        f"/api/sectors/{created['id']}/runs",
+        headers=XHR_HEADERS, json={},
+    )
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["status"] == "running"
+    assert body["sector_id"] == created["id"]
+    assert len(body["id"]) >= 10  # uuid
+
+
+def test_start_run_unknown_sector_returns_404(auth_client, monkeypatch):
+    monkeypatch.setenv("WEB_FAKE_RUNNER", "true")
+    resp = auth_client.post(
+        "/api/sectors/99999/runs", headers=XHR_HEADERS, json={}
+    )
+    assert resp.status_code == 404
+
+
+def test_concurrent_run_for_same_sector_returns_409(
+    auth_client, monkeypatch, app_with_test_db
+):
+    """If a run is already 'running', a second POST must 409."""
+    monkeypatch.setenv("WEB_FAKE_RUNNER", "true")
+    created = auth_client.post(
+        "/api/sectors", headers=XHR_HEADERS, json={"name": "X"}
+    ).json()
+    # Inject a running SectorRun row directly.
+    from tradingagents_web.models import SectorRun
+    _, TestSessionLocal = app_with_test_db
+    db = TestSessionLocal()
+    try:
+        db.add(SectorRun(
+            id="busy", sector_id=created["id"], status="running", phase="macro",
+            started_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+    finally:
+        db.close()
+    resp = auth_client.post(
+        f"/api/sectors/{created['id']}/runs",
+        headers=XHR_HEADERS, json={},
+    )
+    assert resp.status_code == 409
+
+
+def test_start_run_csrf_rejected_without_xhr(auth_client, monkeypatch):
+    monkeypatch.setenv("WEB_FAKE_RUNNER", "true")
+    created = auth_client.post(
+        "/api/sectors", headers=XHR_HEADERS, json={"name": "Y"}
+    ).json()
+    resp = auth_client.post(f"/api/sectors/{created['id']}/runs", json={})
+    assert resp.status_code == 403

@@ -25,6 +25,7 @@ def app_with_test_db(tmp_path: Path):
     Restores the production factory on teardown.
     """
     from tradingagents_web.api import runs as runs_api
+    from tradingagents_web.api import sectors as sectors_api
     from tradingagents_web.main import create_app
 
     db_file = tmp_path / "test.db"
@@ -42,10 +43,12 @@ def app_with_test_db(tmp_path: Path):
     app = create_app()
     app.dependency_overrides[get_db] = _override_get_db
     runs_api.set_background_session_factory(TestSessionLocal)
+    sectors_api.set_background_session_factory(TestSessionLocal)
     try:
         yield app, TestSessionLocal
     finally:
         runs_api.set_background_session_factory(ProdSessionLocal)
+        sectors_api.set_background_session_factory(ProdSessionLocal)
 
 
 @pytest.fixture()
