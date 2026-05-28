@@ -3,8 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import ReactMarkdown from "react-markdown";
 
+import { MarkdownText } from "@/components/analysis/markdown-text";
 import { CandidateTickers } from "@/components/sector/candidate-tickers";
 import { CompaniesTable } from "@/components/sector/companies-table";
 import { PhaseProgress } from "@/components/sector/phase-progress";
@@ -218,8 +218,8 @@ export default function SectorDetailPage() {
             <h2 className="mb-2 text-lg font-semibold text-text-1">
               투자 전망
             </h2>
-            <div className="prose prose-sm dark:prose-invert max-w-none rounded-lg border border-border-1 bg-bg-1 p-4">
-              <ReactMarkdown>{report.data.outlook_summary}</ReactMarkdown>
+            <div className="rounded-lg border border-border-1 bg-bg-1 p-4">
+              <MarkdownText text={report.data.outlook_summary} />
             </div>
           </section>
 
@@ -238,8 +238,8 @@ export default function SectorDetailPage() {
             <summary className="cursor-pointer text-sm font-medium text-text-2">
               전체 리포트 (원문 Markdown)
             </summary>
-            <div className="prose prose-sm dark:prose-invert mt-3 max-w-none">
-              <ReactMarkdown>{report.data.report_md}</ReactMarkdown>
+            <div className="mt-3">
+              <MarkdownText text={report.data.report_md} />
             </div>
           </details>
         </article>
