@@ -142,3 +142,12 @@ export async function getSectorBySlug(slug: string): Promise<SectorSummary | nul
   const all = await listSectors();
   return all.find((s) => s.slug === slug) ?? null;
 }
+
+export async function getActiveRun(sectorId: number): Promise<SectorRun | null> {
+  // Backend returns null (literal JSON `null`) when no running run exists.
+  const r = await fetch(`/api/sectors/${sectorId}/runs/active`, {
+    credentials: "include",
+  });
+  if (!r.ok) throw new Error(`getActiveRun ${r.status}`);
+  return r.json();
+}

@@ -1,14 +1,16 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 import { CandidateTickers } from "@/components/sector/candidate-tickers";
 import { CompaniesTable } from "@/components/sector/companies-table";
+import { PhaseProgress } from "@/components/sector/phase-progress";
 import { ValueChainDiagram } from "@/components/sector/value-chain-diagram";
 import {
+  getActiveRun,
   getReport,
   getSectorBySlug,
   listReports,
@@ -18,15 +20,27 @@ import {
 export default function SectorDetailPage() {
   // Project is on Next.js 14.2.x where dynamic route params are a plain
   // object accessed via useParams() — NOT a Promise unwrapped by React.use().
-  // Next 15+ switched to Promise-params; we're not there yet (the runtime
-  // error "An unsupported type was passed to use()" was the give-away).
   const { slug } = useParams<{ slug: string }>();
   const router = useRouter();
+  const qc = useQueryClient();
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
+  // SSE-driven phase indicator for any active run. Initially null; populated
+  // both from the bus history replay (when we re-subscribe after navigating
+  // back to the page) and from live events.
+  const [livePhase, setLivePhase] = useState<string | null>(null);
 
   const sector = useQuery({
     queryKey: ["sector", slug],
     queryFn: () => getSectorBySlug(slug),
+  });
+
+  // Poll for an in-flight run so a user who navigates away and comes back
+  // still sees "분석 진행 중" with the right phase.
+  const activeRun = useQuery({
+    queryKey: ["sector-active-run", sector.data?.id],
+    queryFn: () => getActiveRun(sector.data!.id),
+    enabled: !!sector.data,
+    refetchInterval: (q) => (q.state.data ? 5_000 : 15_000),
   });
 
   const reports = useQuery({
@@ -43,9 +57,54 @@ export default function SectorDetailPage() {
     enabled: !!sector.data && !!activeReportId,
   });
 
+  // Re-subscribe to the SSE stream whenever there's a live run. EventBus
+  // history replay means we get the latest phase even if the run started
+  // before this component mounted (user clicked away and came back).
+  useEffect(() => {
+    if (!sector.data || !activeRun.data) {
+      setLivePhase(null);
+      return;
+    }
+    const sectorId = sector.data.id;
+    const runId = activeRun.data.id;
+    const es = new EventSource(
+      `/api/sectors/${sectorId}/runs/${runId}/stream`,
+    );
+    es.addEventListener("progress", (ev) => {
+      try {
+        const p = JSON.parse((ev as MessageEvent).data);
+        if (typeof p.phase === "string") setLivePhase(p.phase);
+      } catch {
+        // ignore malformed payload
+      }
+    });
+    es.addEventListener("done", () => {
+      es.close();
+      // Refresh the run list, reports list, and the active-run query so
+      // the page swaps from "진행 중" → new report visible.
+      qc.invalidateQueries({ queryKey: ["sector-reports", sectorId] });
+      qc.invalidateQueries({ queryKey: ["sector-active-run", sectorId] });
+      // Auto-pick the new latest report (most recent created_at).
+      setSelectedReportId(null);
+    });
+    es.addEventListener("error", () => {
+      // Stream closed (run finished or network blip). Let polling pick up
+      // the post-completion state via getActiveRun.
+      es.close();
+    });
+    return () => es.close();
+  }, [sector.data, activeRun.data, qc]);
+
   const startRun = useMutation({
     mutationFn: () => startSectorRun(sector.data!.id),
-    onSuccess: (run) => router.push(`/sectors/${slug}/runs/${run.id}`),
+    onSuccess: (run) => {
+      // Immediately refresh active-run so the UI flips to "진행 중" without
+      // waiting for the next poll. The dedicated runs/[rid] page is still
+      // reachable via deep link, but we keep the user on /sectors/<slug>
+      // by default so backing out doesn't lose context.
+      qc.setQueryData(["sector-active-run", sector.data!.id], run);
+      router.push(`/sectors/${slug}/runs/${run.id}`);
+    },
   });
 
   if (sector.isLoading) {
@@ -56,6 +115,8 @@ export default function SectorDetailPage() {
       <p className="px-6 py-6 text-text-2">섹터를 찾을 수 없습니다.</p>
     );
   }
+
+  const running = activeRun.data;
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-6 md:px-8">
@@ -83,10 +144,17 @@ export default function SectorDetailPage() {
           <button
             type="button"
             onClick={() => startRun.mutate()}
-            disabled={startRun.isPending}
+            disabled={startRun.isPending || !!running}
             className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+            title={
+              running ? "이미 분석이 진행 중입니다" : "새 리포트 생성"
+            }
           >
-            {startRun.isPending ? "시작 중…" : "리포트 새로 생성"}
+            {startRun.isPending
+              ? "시작 중…"
+              : running
+                ? "진행 중…"
+                : "리포트 새로 생성"}
           </button>
         </div>
       </header>
@@ -97,11 +165,38 @@ export default function SectorDetailPage() {
         </p>
       )}
 
-      {reports.data && reports.data.length === 0 && !startRun.isPending && (
-        <p className="rounded-lg bg-bg-1 p-6 text-text-2">
-          아직 리포트가 없습니다. &ldquo;리포트 새로 생성&rdquo; 버튼으로 시작하세요.
-        </p>
+      {running && (
+        <section className="mb-6 rounded-2xl border border-accent/40 bg-accent-muted p-5">
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <h2 className="text-sm font-semibold text-text-1">
+              분석 진행 중
+            </h2>
+            <button
+              type="button"
+              onClick={() =>
+                router.push(`/sectors/${slug}/runs/${running.id}`)
+              }
+              className="text-xs text-accent hover:underline"
+            >
+              진행 페이지 열기 →
+            </button>
+          </div>
+          <PhaseProgress current={livePhase ?? running.phase} />
+          <p className="mt-3 text-xs text-text-3">
+            화면을 닫아도 백그라운드에서 계속 실행됩니다. 완료되면
+            새 버전이 자동으로 추가됩니다.
+          </p>
+        </section>
       )}
+
+      {reports.data &&
+        reports.data.length === 0 &&
+        !startRun.isPending &&
+        !running && (
+          <p className="rounded-lg bg-bg-1 p-6 text-text-2">
+            아직 리포트가 없습니다. &ldquo;리포트 새로 생성&rdquo; 버튼으로 시작하세요.
+          </p>
+        )}
 
       {report.data && (
         <article className="space-y-8">

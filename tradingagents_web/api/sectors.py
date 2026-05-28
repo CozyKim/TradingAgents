@@ -393,6 +393,28 @@ async def _execute_sector_run(request: SectorRunRequest) -> None:
         db.close()
 
 
+@router.get("/{sector_id}/runs/active", response_model=SectorRunOut | None)
+async def get_active_sector_run(
+    sector_id: int,
+    db: Annotated[OrmSession, Depends(get_db)],
+    _user: Annotated[User, Depends(get_current_user)],
+) -> SectorRunOut | None:
+    """Return the currently-running SectorRun for this sector, if any.
+
+    Polled by the detail page so a user who navigates away and returns
+    still sees "분석 진행 중" with the latest phase, and can re-subscribe
+    to the SSE stream by run_id.
+    """
+    row = db.execute(
+        select(SectorRun)
+        .where(SectorRun.sector_id == sector_id)
+        .where(SectorRun.status == "running")
+        .order_by(desc(SectorRun.started_at))
+        .limit(1)
+    ).scalar_one_or_none()
+    return SectorRunOut.model_validate(row) if row is not None else None
+
+
 @router.get("/{sector_id}/runs/{run_id}/stream")
 async def stream_sector_run(
     sector_id: int,
