@@ -10,10 +10,13 @@ that keeps requesting the tool after the budget has been exhausted.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from typing import Any
 
 from langchain_core.messages import AnyMessage, ToolMessage
+
+logger = logging.getLogger(__name__)
 
 
 def invoke_with_tool_loop(
@@ -50,6 +53,15 @@ def invoke_with_tool_loop(
         for tc in tool_calls:
             args = tc["args"] if isinstance(tc, dict) else getattr(tc, "args", {})
             tc_id = tc["id"] if isinstance(tc, dict) else getattr(tc, "id", "")
-            result = tool.invoke(args)
+            try:
+                result = tool.invoke(args)
+            except Exception:  # noqa: BLE001 — never let a bad tool call crash the graph
+                # Models occasionally emit tool_calls with missing/invalid
+                # args (e.g. no `query`). Swallow Pydantic/KeyError/etc and
+                # feed an empty-result ToolMessage back so the model can
+                # recover (likely by giving up on the search and writing
+                # the answer from context).
+                logger.exception("invoke_with_tool_loop: tool invocation failed")
+                result = "[]"
             history.append(ToolMessage(content=str(result), tool_call_id=tc_id))
     return ai, history

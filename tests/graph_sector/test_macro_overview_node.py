@@ -59,3 +59,33 @@ def test_macro_overview_executes_tool_calls():
     assert llm.invoke.call_count == 2
     # The tool was actually invoked → budget charged
     assert budget.total_used == 1
+
+
+def test_macro_overview_swallows_malformed_tool_call():
+    """Model emits a tool_call with invalid args — the loop must NOT crash.
+
+    langchain @tool wraps args in a Pydantic schema; missing required fields
+    like 'query' make tool.invoke({}) raise ValidationError. Without the
+    try/except in _tool_loop the whole sector analysis would die.
+    """
+    llm = MagicMock()
+    llm.bind_tools.return_value = llm
+    llm.invoke.side_effect = [
+        AIMessage(
+            content="",
+            tool_calls=[{
+                "name": "web_search",
+                "args": {},  # missing 'query' — will raise
+                "id": "call-1",
+                "type": "tool_call",
+            }],
+        ),
+        AIMessage(content="# Macro\n시장 규모: USD 200B"),
+    ]
+    budget = SearchBudget(total=5, per_node=3)
+    node = make_macro_overview_node(llm, budget=budget)
+    state = SectorState(sector_slug="ai", sector_name="AI", keywords=[])
+    result = node(state)  # must NOT raise
+    assert "시장 규모" in result["macro_report"]
+    # Bad tool_call → no Tavily round-trip → budget untouched
+    assert budget.total_used == 0
