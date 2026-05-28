@@ -15,7 +15,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as OrmSession
 
-from tradingagents_web.auth import get_current_user
+from tradingagents_web.auth import get_current_user, require_xhr
 from tradingagents_web.db import get_db
 from tradingagents_web.models import Sector, SectorReport, User
 from tradingagents_web.schemas.sector import SectorCreate, SectorOut
@@ -59,6 +59,7 @@ async def create_sector(
     payload: SectorCreate,
     db: Annotated[OrmSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    _xhr: Annotated[None, Depends(require_xhr)] = None,
 ):
     """Create a user-defined sector. Slug is auto-derived from name when omitted."""
     sector = Sector(
@@ -87,6 +88,7 @@ async def delete_sector(
     sector_id: int,
     db: Annotated[OrmSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    _xhr: Annotated[None, Depends(require_xhr)] = None,
 ):
     """Delete a user-created sector. Presets are protected (409)."""
     sector = db.get(Sector, sector_id)
