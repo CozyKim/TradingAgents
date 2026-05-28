@@ -73,6 +73,12 @@ def _normalize_company(c: dict) -> dict:
         except (TypeError, ValueError):
             share_value = 0.0
             basis = "unknown"
+    # Out-of-range (negative, >100%): clamp to schema bounds AND mark unknown.
+    # CompanyShare Pydantic schema enforces ge=0, le=100, so we must do this
+    # here or downstream serialization would 500.
+    if share_value < 0.0 or share_value > 100.0:
+        share_value = max(0.0, min(100.0, share_value))
+        basis = "unknown"
     return {
         "name": str(c.get("name", "Unknown")),
         "ticker": c.get("ticker"),
@@ -93,9 +99,16 @@ def _try_parse(content: str) -> list[dict] | None:
         data = json.loads(s)
     except json.JSONDecodeError:
         return None
-    if isinstance(data, dict) and isinstance(data.get("companies"), list):
-        return [_normalize_company(c) for c in data["companies"]]
-    return None
+    if not isinstance(data, dict):
+        return None
+    items = data.get("companies")
+    if not isinstance(items, list):
+        return None
+    # Each element must be a dict; bail to retry/fallback if any are scalars.
+    # Without this guard _normalize_company would hit AttributeError on c.get().
+    if not all(isinstance(c, dict) for c in items):
+        return None
+    return [_normalize_company(c) for c in items]
 
 
 def _invoke(chat, tool, messages):
