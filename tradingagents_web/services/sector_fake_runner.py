@@ -156,15 +156,18 @@ class FakeSectorRunner:
         self.bus = bus
 
     async def run(self, request: SectorRunRequest) -> SectorRunResult:
-        """Run the fake sector analysis and emit deterministic events.
+        """Run the fake sector analysis and emit phase progress events.
 
-        Emits one ``progress`` event per phase in :data:`SECTOR_PHASE_ORDER`,
-        followed by a single ``done`` event carrying the ``sector_id``.
-        Always calls :meth:`EventBus.finish` so subscribers terminate cleanly.
+        Emits one ``progress`` event per phase in :data:`SECTOR_PHASE_ORDER`.
+
+        NOTE: emitting ``done`` + ``bus.finish()`` is the CALLER's responsibility
+        (api/sectors._execute_sector_run). Doing it here would race against the
+        caller's SectorReport commit — an SSE subscriber reacting to ``done``
+        could fire ``GET /reports/latest`` before the row is visible.
 
         Args:
-            request: The :class:`SectorRunRequest` (only ``run_id``,
-                ``sector_id`` and ``sector_name`` are used by the fake).
+            request: The :class:`SectorRunRequest` (only ``run_id`` and
+                ``sector_name`` are used by the fake).
 
         Returns:
             A :class:`SectorRunResult` populated with dummy report content.
@@ -177,7 +180,7 @@ class FakeSectorRunner:
             # Brief sleep so the UI can show each phase transition.
             await asyncio.sleep(0.01)
 
-        result = SectorRunResult(
+        return SectorRunResult(
             report_md=(
                 f"# {request.sector_name} 산업 분석\n\n"
                 "(WEB_FAKE_RUNNER=true 모드의 더미 리포트)\n"
@@ -191,9 +194,3 @@ class FakeSectorRunner:
             candidate_tickers=_DUMMY_CANDIDATES,
             search_call_count=0,
         )
-        self.bus.publish(
-            request.run_id,
-            AnalysisEvent(type="done", data={"sector_id": request.sector_id}),
-        )
-        self.bus.finish(request.run_id)
-        return result

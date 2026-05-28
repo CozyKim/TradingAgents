@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from datetime import date
 from unittest.mock import MagicMock
@@ -17,7 +16,12 @@ from tradingagents_web.services.sector_runner import RealSectorRunner
 
 @pytest.mark.asyncio
 async def test_real_runner_progresses_through_phases():
-    """RealSectorRunner emits 4 phase events, a done event, and a stitched report."""
+    """RealSectorRunner emits 4 phase events and returns a stitched report.
+
+    Note: ``done`` event + ``bus.finish()`` are emitted by the caller
+    (api/sectors._execute_sector_run) AFTER the SectorReport row is
+    committed, so SSE clients can't race against persistence.
+    """
     bus = EventBus()
     deep = MagicMock()
     deep.bind_tools.return_value = deep
@@ -49,25 +53,15 @@ async def test_real_runner_progresses_through_phases():
         analysis_date=date(2026, 5, 28),
     )
 
-    events: list = []
-
-    async def collect():
-        async with bus.subscribe("r1") as queue:
-            while True:
-                ev = await queue.get()
-                if ev is None:
-                    return
-                events.append(ev)
-
-    task = asyncio.create_task(collect())
     result = await runner.run(request)
-    await asyncio.wait_for(task, timeout=5.0)
 
-    phases = [ev.data["phase"] for ev in events if ev.type == "progress"]
+    history = bus.history("r1")
+    phases = [ev.data["phase"] for ev in history if ev.type == "progress"]
     assert phases == ["macro", "value_chain", "competitive", "outlook"]
-    done = [ev for ev in events if ev.type == "done"]
-    assert len(done) == 1
-    assert done[0].data["sector_id"] == 1
+    # Runner deliberately does NOT emit done or finish — the api wrapper does
+    # after persisting the SectorReport row.
+    assert all(ev.type != "done" for ev in history)
+    assert not bus.is_finished("r1")
     assert len(result.companies) == 1
     assert result.candidate_tickers[0]["ticker"] == "X"
     # report_md is composed from final state

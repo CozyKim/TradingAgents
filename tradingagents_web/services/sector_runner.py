@@ -129,11 +129,10 @@ class RealSectorRunner:
             candidate_tickers=final_state.get("candidate_tickers", []),
             search_call_count=budget.total_used,
         )
-        self.bus.publish(
-            request.run_id,
-            AnalysisEvent(type="done", data={"sector_id": request.sector_id}),
-        )
-        self.bus.finish(request.run_id)
+        # NOTE: emitting `done` + `bus.finish()` is the caller's responsibility
+        # (api/sectors._execute_sector_run). The caller commits the SectorReport
+        # row first, then signals completion — otherwise an SSE client reacting
+        # to `done` could race to GET /reports/latest before the row is visible.
         return result
 
     @staticmethod

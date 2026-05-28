@@ -313,16 +313,12 @@ async def _execute_sector_run(request: SectorRunRequest) -> None:
                 bus.finish(request.run_id)
             return
 
-        row = db.get(SectorRun, request.run_id)
-        if row is not None:
-            row.status = "completed"
-            row.phase = "outlook"
-            row.finished_at = datetime.now(timezone.utc)
-            row.search_call_count = result.search_call_count
-            db.commit()
-
-        # Next version = max(prev) + 1 — sector_reports has a unique constraint
-        # on (sector_id, version) so we compute monotonically.
+        # Compute next version + insert the SectorReport AND flip status in
+        # a single transaction — otherwise a SSE client reacting to `done`
+        # could race against report persistence. The runner intentionally
+        # does NOT publish `done` / `bus.finish()`; we do it below AFTER the
+        # commit succeeds so observers can trust that the latest report is
+        # visible by the time they see completion.
         max_version = db.execute(
             select(SectorReport.version)
             .where(SectorReport.sector_id == request.sector_id)
@@ -343,7 +339,22 @@ async def _execute_sector_run(request: SectorRunRequest) -> None:
                 created_at=datetime.now(timezone.utc),
             )
         )
+        row = db.get(SectorRun, request.run_id)
+        if row is not None:
+            row.status = "completed"
+            row.phase = "outlook"
+            row.finished_at = datetime.now(timezone.utc)
+            row.search_call_count = result.search_call_count
         db.commit()
+
+        # All persistence done — now safe to signal completion. Order matters:
+        # `done` before `finish` so the sentinel arrives last and subscribers
+        # can rely on `done.data["sector_id"]` to know which sector to refresh.
+        bus.publish(
+            request.run_id,
+            AnalysisEvent(type="done", data={"sector_id": request.sector_id}),
+        )
+        bus.finish(request.run_id)
     finally:
         db.close()
 
