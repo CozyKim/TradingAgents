@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 
 const ITEMS = [
+  { href: "/sectors", label: "Sectors", desc: "Industry value-chain reports" },
   { href: "/history", label: "History", desc: "Past analyses" },
   { href: "/schedules", label: "Schedules", desc: "Recurring runs" },
   { href: "/settings/notifications", label: "Notifications", desc: "Alerts + Telegram" },

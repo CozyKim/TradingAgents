@@ -1,5 +1,6 @@
 "use client";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,15 @@ export function RunForm() {
   const router = useRouter();
   const create = useCreateRun();
 
-  const [ticker, setTicker] = useState("");
+  // Sector-analysis bridge: candidate-tickers cards land here with
+  // ?ticker=...&from_sector=...&from_report=... — prefill the ticker
+  // input and show a one-line breadcrumb back to the source report.
+  const search = useSearchParams();
+  const prefillTicker = search.get("ticker") ?? "";
+  const fromSector = search.get("from_sector");
+  const fromReport = search.get("from_report");
+
+  const [ticker, setTicker] = useState(prefillTicker);
   const [analysisDate, setAnalysisDate] = useState(today());
   const [analysts, setAnalysts] = useState<Analyst[]>([...VALID_ANALYSTS]);
   const [debateRounds, setDebateRounds] = useState(1);
@@ -46,6 +55,20 @@ export function RunForm() {
 
   return (
     <form onSubmit={onSubmit} className="grid gap-4">
+      {fromSector && (
+        <div className="rounded-xl border border-accent/30 bg-accent-muted px-4 py-3 text-[13px] text-text-1">
+          산업 리포트{" "}
+          <Link
+            href={`/sectors/${fromSector}`}
+            className="font-semibold text-accent hover:underline"
+          >
+            {fromSector}
+          </Link>
+          {fromReport && <span className="text-text-3"> · v{fromReport}</span>}
+          <span className="text-text-3">에서 시작</span>
+        </div>
+      )}
+
       <section className="rounded-2xl bg-bg-1 p-5 shadow-card">
         <div className="grid gap-2">
           <Label htmlFor="ticker">티커</Label>

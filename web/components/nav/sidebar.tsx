@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   Play,
   History,
+  Layers,
   Briefcase,
   Clock,
   Flag,
@@ -25,6 +26,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
       { href: "/", label: "대시보드", icon: LayoutDashboard },
       { href: "/run", label: "분석 실행", icon: Play },
       { href: "/history", label: "분석 기록", icon: History },
+      { href: "/sectors", label: "산업·섹터", icon: Layers },
     ],
   },
   {
