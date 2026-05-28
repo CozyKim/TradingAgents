@@ -1,8 +1,8 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
-import { use, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 import { CandidateTickers } from "@/components/sector/candidate-tickers";
@@ -15,12 +15,12 @@ import {
   startSectorRun,
 } from "@/lib/sectors";
 
-export default function SectorDetailPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
-  const { slug } = use(params);
+export default function SectorDetailPage() {
+  // Project is on Next.js 14.2.x where dynamic route params are a plain
+  // object accessed via useParams() — NOT a Promise unwrapped by React.use().
+  // Next 15+ switched to Promise-params; we're not there yet (the runtime
+  // error "An unsupported type was passed to use()" was the give-away).
+  const { slug } = useParams<{ slug: string }>();
   const router = useRouter();
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
 

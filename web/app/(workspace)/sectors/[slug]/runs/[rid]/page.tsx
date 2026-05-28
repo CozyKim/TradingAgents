@@ -1,18 +1,15 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
-import { use, useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { PhaseProgress } from "@/components/sector/phase-progress";
 import { getSectorBySlug } from "@/lib/sectors";
 
-export default function SectorRunPage({
-  params,
-}: {
-  params: Promise<{ slug: string; rid: string }>;
-}) {
-  const { slug, rid } = use(params);
+export default function SectorRunPage() {
+  // Next.js 14.2.x — params is a plain object via useParams(), not a Promise.
+  const { slug, rid } = useParams<{ slug: string; rid: string }>();
   const router = useRouter();
   const qc = useQueryClient();
   const [phase, setPhase] = useState<string | null>(null);
