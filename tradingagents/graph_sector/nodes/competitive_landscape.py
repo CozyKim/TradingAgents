@@ -96,9 +96,19 @@ def _normalize_company(c: dict) -> dict:
         s for s in sources_iter
         if isinstance(s, str) and s.lower().startswith(("http://", "https://"))
     ]
+    # ticker: schema says str | None; LLM sometimes returns Korean stock codes
+    # as integers (e.g. 5930) or other non-string scalars. Coerce non-None
+    # non-strings to str so CompanyShare doesn't reject the report later.
+    raw_ticker = c.get("ticker")
+    if raw_ticker is None or raw_ticker == "":
+        ticker = None
+    elif isinstance(raw_ticker, str):
+        ticker = raw_ticker
+    else:
+        ticker = str(raw_ticker)
     return {
         "name": str(c.get("name", "Unknown")),
-        "ticker": c.get("ticker"),
+        "ticker": ticker,
         "stage": str(c.get("stage", "")),
         "share_value": share_value,
         "share_basis": basis,

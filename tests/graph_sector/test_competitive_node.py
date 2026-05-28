@@ -143,6 +143,32 @@ def test_sources_non_url_strings_dropped():
     ]
 
 
+def test_ticker_non_string_coerced():
+    """LLM may emit Korean stock codes as integers (5930) — coerce to str.
+
+    Without this guard CompanyShare.ticker would reject the int at serialize.
+    """
+    payload = {"companies": [
+        {"name": "Samsung", "ticker": 5930, "stage": "Down",
+         "share_value": 50, "share_basis": "reported",
+         "confidence": "high", "sources": []},
+        {"name": "X", "ticker": None, "stage": "?",
+         "share_value": 10, "share_basis": "estimated",
+         "confidence": "medium", "sources": []},
+        {"name": "Y", "ticker": "", "stage": "?",
+         "share_value": 10, "share_basis": "estimated",
+         "confidence": "medium", "sources": []},
+    ]}
+    llm = MagicMock()
+    llm.bind_tools.return_value = llm
+    llm.invoke.return_value = AIMessage(content=json.dumps(payload))
+    node = make_competitive_node(llm, budget=None)
+    result = node(SectorState(sector_slug="x", sector_name="X", keywords=[]))
+    assert result["companies"][0]["ticker"] == "5930"
+    assert result["companies"][1]["ticker"] is None
+    assert result["companies"][2]["ticker"] is None  # empty string → None
+
+
 def test_companies_with_non_dict_elements_falls_back():
     """JSON parses but {"companies": ["ASML"]} — element is a str, not dict.
 
