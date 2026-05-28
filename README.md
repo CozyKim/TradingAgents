@@ -73,6 +73,12 @@ cron 식으로 자동 분석을 예약할 수 있어요. monitor가 켜진 보�
   <img src="assets/web/settings-notifications.png" alt="알림 설정 — Telegram 토큰과 트리거 토글" width="60%">
 </p>
 
+### Sectors — 산업/섹터 분석 (M6)
+
+AI · 전력 · 반도체(메모리/비메모리) · 로봇 · 우주 같은 산업을 선택하면 4단계 LangGraph 그래프가 거시 환경 → 가치사슬 → 경쟁 구도 → 투자 전망 보고서를 생성합니다. 가치사슬은 mermaid 다이어그램, 단계별 기업 점유율은 **공시/추정/불명 배지 + 출처 URL**로 분리되어 어떤 수치가 어느 정도 신뢰할 수 있는지 한눈에 보입니다. 후보 종목 카드의 "종목 분석" 버튼이 기존 `/run` 폼으로 prefill되어 산업 → 종목 드릴다운이 자연스럽게 이어집니다.
+
+웹 검색은 Tavily(`TAVILY_API_KEY`)를 사용하며 노드당 3회·전체 12회 호출 가드로 비용 폭주를 막습니다. `WEB_FAKE_RUNNER=true`로 LLM/Tavily 호출 없이 흐름 검증 가능. 현재 실제 LLM 와이어링은 후속 작업으로 분리되어 있어 `WEB_FAKE_RUNNER`가 꺼진 상태에서 분석을 시작하면 명시적 503으로 거부됩니다(silent 실패 방지).
+
 ### Mobile (installable PWA)
 
 <p align="center">
