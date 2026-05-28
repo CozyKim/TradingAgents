@@ -232,3 +232,42 @@ cd web && npm run e2e
 - 복원 endpoint(`POST /api/settings/account/restore`)는 라이브 DB를 교체하므로 운영에서는 사전 백업을 항상 권장. 실패 시 staging 파일을 자동 정리하지만 디스크가 가득 차면 staging이 남을 수 있으므로 `<data_dir>/restore.staging.db`가 있는지 점검 가능.
 - 서비스 워커는 same-origin HTML 캐시를 보관하므로 새 배포 후에도 한 번은 강제 새로고침이 필요할 수 있다(또는 PWA를 재설치). `CACHE_NAME` 버전을 올리면 자동으로 정리된다.
 - 백업 파일에는 평문 분석 보고서·암호화된 토큰·세션 토큰이 모두 들어 있다 — 외부 공유는 피하고, 다운로드 즉시 안전한 곳으로 이동시킬 것.
+
+## M6 — Sector Industry Analysis
+
+신규 의존성: 백엔드 `tavily-python>=0.5,<1.0` (이미 `uv sync`로 설치), 프런트 `mermaid@^11` (이미 `npm install`로 설치). 마이그레이션 `866f0acf360c_add_sectors`가 `sectors`, `sector_runs`, `sector_reports` 테이블 + 6종 프리셋(`ai / power / semiconductor-memory / semiconductor-logic / robotics / space`)을 시드한다.
+
+### 환경 변수
+
+| 이름 | 기본값 | 설명 |
+|---|---|---|
+| `TAVILY_API_KEY` | (필수, 실제 실행 시) | Tavily 웹 검색 API 키. 미설정 시 `web_search` 도구가 빈 결과 반환 |
+| `SECTOR_SEARCH_BUDGET` | `12` | 한 번의 산업 분석 전체에서 `web_search` 호출 상한 |
+| `SECTOR_NODE_SEARCH_BUDGET` | `3` | 노드(거시/가치사슬/경쟁) 1개당 `web_search` 호출 상한 |
+| `WEB_FAKE_RUNNER` | `false` | `true`로 두면 `FakeSectorRunner`가 LLM/Tavily 없이 더미 리포트 생성 (E2E 권장) |
+
+### 사용 흐름
+
+1. `/sectors`에서 프리셋 6종 또는 사용자 정의 섹터를 선택 (`/sectors/new`로 신규 생성 가능).
+2. `/sectors/<slug>`에서 **"리포트 새로 생성"** → 4단계 그래프(거시 → 가치사슬 → 경쟁 → 전망)가 SSE phase 진행으로 표시.
+3. 완료 후 가치사슬 mermaid 다이어그램, 단계별 기업 점유율 표(공시/추정/불명 배지 + 출처 팝오버), 후보 종목 카드 확인.
+4. 후보 종목 카드의 **"종목 분석"** 버튼 → `/run?ticker=...&from_sector=...&from_report=...`로 기존 종목 분석 폼에 ticker prefill + 출처 breadcrumb 표시.
+
+### 안전 가드 (개발 중 codex review로 발견·수정한 것들)
+
+- **검색 예산**: `web_search` 도구가 노드당 3회·전체 12회 초과 시 빈 리스트 반환. 실패한 Tavily 호출(429/timeout)도 카운트(반복 retry 방지).
+- **Tool call 실행**: `bind_tools()`는 모델이 요청만 하니까 `_tool_loop.invoke_with_tool_loop`이 실제로 도구를 실행하고 결과를 ToolMessage로 재주입. malformed args 예외도 흡수.
+- **JSON 검증 + 재시도**: 각 노드가 응답 JSON shape 검증(stages 리스트, key_companies str 리스트, mermaid str 등). 1회 재시도 후 실패 시 fallback. `share_value` 비숫자/범위 밖, `ticker` 비문자, `sources` 비URL은 모두 정규화되어 `SectorReportOut` 스키마 검증을 통과.
+- **CSRF**: POST/DELETE `/api/sectors/*`는 `X-Requested-With: fetch` 헤더 필수.
+- **동시 실행**: 같은 섹터에 이미 `status=running`인 분석이 있으면 새 POST는 409.
+- **프리셋 보호**: 6종 프리셋은 삭제 불가(409). 사용자 정의는 cascade로 리포트·실행 기록까지 함께 삭제 (ORM + 마이그레이션 양쪽에 `ondelete=CASCADE`).
+- **운영 LLM 미와이어링**: `WEB_FAKE_RUNNER=true`가 아닌 환경에서 POST `/sectors/{id}/runs`는 즉시 503을 반환해 background에서의 silent 실패를 방지. 실제 LLM 연결은 후속 task에서 처리.
+- **백업 복원**: `_REQUIRED_TABLES`에 sector 테이블 3종이 포함되어 M6 이전 백업을 복원하면 명확한 에러로 거부됨(스키마 mismatch 조기 감지).
+- **Slug 검증**: `SectorCreate.slug`는 길이 1~64 + slugify round-trip 확인 → `foo/bar`, 공백, 대문자, trailing dash 등 URL-unsafe 입력 거부. 한글 음절은 통과 (`반도체-메모리` 등).
+
+### 주의
+
+- 점유율 수치는 모두 LLM + 웹 검색 종합 결과. `share_basis=reported`라도 출처 URL을 직접 클릭해 검증 권장.
+- `SearchBudget`은 그래프 노드 클로저에 캡처되므로 매 `run()`마다 새 그래프를 컴파일해야 budget이 누적되지 않는다 (RealSectorRunner가 그렇게 함; node factory docstring 참조).
+- `SectorReport` insert와 `SectorRun.status='completed'` flip은 같은 트랜잭션에서 commit된 뒤에야 `done` 이벤트 + `bus.finish()`가 발생 — SSE 클라이언트가 완료 직후 `/reports/latest`를 호출해도 race 없이 새 리포트가 보장된다.
+- E2E: `WEB_FAKE_RUNNER=true npm run e2e -- sectors`로 sectors.spec.ts만 실행 (Playwright 격리 DB 사용).
