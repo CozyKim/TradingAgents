@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,8 +20,16 @@ const TZ_OPTIONS: { value: string; label: string }[] = [
 
 export function ScheduleForm() {
   const router = useRouter();
+  // Bridge from /history: ?ticker=AAPL&from_run=<run_id> prefills the
+  // ticker chip and shows a one-line breadcrumb back to the source run.
+  const search = useSearchParams();
+  const prefillTicker = (search.get("ticker") ?? "").toUpperCase();
+  const fromRun = search.get("from_run");
+
   const [name, setName] = useState("");
-  const [tickers, setTickers] = useState<string[]>([]);
+  const [tickers, setTickers] = useState<string[]>(
+    prefillTicker ? [prefillTicker] : [],
+  );
   const [tickerDraft, setTickerDraft] = useState("");
   const [cron, setCron] = useState("30 9 * * *");
   const [tz, setTz] = useState("Asia/Seoul");
@@ -65,6 +74,18 @@ export function ScheduleForm() {
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4 max-w-xl">
+      {fromRun && (
+        <div className="rounded-md border border-accent/30 bg-accent-muted px-3 py-2 text-xs text-text-1">
+          분석{" "}
+          <Link
+            href={`/history/${fromRun}`}
+            className="font-semibold text-accent hover:underline"
+          >
+            #{fromRun.slice(0, 8)}
+          </Link>
+          <span className="text-text-3">에서 시작</span>
+        </div>
+      )}
       <div>
         <Label htmlFor="name">Name</Label>
         <Input
