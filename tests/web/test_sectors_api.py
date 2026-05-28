@@ -166,14 +166,17 @@ def test_start_run_csrf_rejected_without_xhr(auth_client, monkeypatch):
     assert resp.status_code == 403
 
 
-def test_start_run_returns_503_without_fake_runner(auth_client, monkeypatch):
-    """Real LLM wiring is deferred — production POST must fail fast at 503.
+def test_start_run_returns_503_with_unknown_llm_provider(auth_client, monkeypatch):
+    """Misconfigured LLM provider must fail fast at 503 (probed eagerly).
 
-    Without this guard the route would 202 and then silently crash in the
-    background driver with NotImplementedError once a real runner tried to
-    invoke an unwired LLM factory.
+    Without this guard the route would 202 and then crash in the background
+    driver on first llm_factory() call, leaving the user no signal until
+    they checked SectorRun.status.
     """
     monkeypatch.delenv("WEB_FAKE_RUNNER", raising=False)
+    monkeypatch.setenv(
+        "WEB_SECTOR_LLM_PROVIDER", "definitely-not-a-real-provider"
+    )
     created = auth_client.post(
         "/api/sectors", headers=XHR_HEADERS, json={"name": "Z"}
     ).json()
@@ -182,7 +185,7 @@ def test_start_run_returns_503_without_fake_runner(auth_client, monkeypatch):
         headers=XHR_HEADERS, json={},
     )
     assert resp.status_code == 503
-    assert "WEB_FAKE_RUNNER" in resp.json()["detail"]
+    assert "provider" in resp.json()["detail"].lower()
 
 
 # ---------------------------------------------------------------------------

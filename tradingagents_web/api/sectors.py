@@ -42,6 +42,7 @@ from tradingagents_web.services.sector_fake_runner import (
     FakeSectorRunner,
     SectorRunRequest,
 )
+from tradingagents_web.services.sector_runner import RealSectorRunner
 
 logger = logging.getLogger(__name__)
 
@@ -66,15 +67,31 @@ def set_background_session_factory(factory: Callable[[], OrmSession]) -> None:
 
 
 class SectorRunnerNotConfigured(RuntimeError):
-    """Production LLM wiring for sector runs is not yet available.
+    """Production LLM wiring is not yet available for the requested provider.
 
     Raised at the API edge so the user sees a 503 immediately rather than
     a 202-then-silent-failure in the background task.
     """
 
 
+# Defaults for the real runner. Codex OAuth is the project's preferred
+# zero-API-key path (uses an existing ChatGPT Plus/Pro session). Override
+# via WEB_SECTOR_LLM_PROVIDER / WEB_SECTOR_DEEP_MODEL / WEB_SECTOR_QUICK_MODEL.
+_DEFAULT_SECTOR_PROVIDER = "codex_oauth"
+_DEFAULT_SECTOR_DEEP_MODEL = "gpt-5.5"
+_DEFAULT_SECTOR_QUICK_MODEL = "gpt-5.4-mini"
+
+
 def _build_runner(bus: EventBus):
     """Pick FakeSectorRunner vs RealSectorRunner based on WEB_FAKE_RUNNER.
+
+    For the real path, build an ``llm_factory`` from
+    :func:`tradingagents.llm_clients.factory.create_llm_client` so the
+    sector graph reuses the same provider catalogue as the per-ticker
+    pipeline (OpenAI / Anthropic / Google / xAI / Codex OAuth / etc).
+    ``ChatCodexOAuth`` and the OpenAI-style clients return LangChain
+    :class:`BaseChatModel` subclasses with ``bind_tools`` implemented,
+    which is exactly what the graph nodes call.
 
     Args:
         bus: The shared :class:`EventBus` instance.
@@ -83,25 +100,42 @@ def _build_runner(bus: EventBus):
         A runner exposing an awaitable ``run(SectorRunRequest)`` method.
 
     Raises:
-        SectorRunnerNotConfigured: when ``WEB_FAKE_RUNNER`` is not true.
-            See module note below — real LLM wiring lands in a follow-up
-            task; until then, production requests are rejected with 503
-            at the API edge instead of silently failing in the background.
+        SectorRunnerNotConfigured: when the LLM client cannot be
+            instantiated (e.g. missing OAuth session, unknown provider).
+            The exception is caught at the API edge and turned into 503.
     """
     if os.environ.get("WEB_FAKE_RUNNER", "false").lower() == "true":
         return FakeSectorRunner(bus)
-    # TODO(follow-up task): wire a real LLM factory.
-    # tradingagents_web does not yet expose a clean
-    # ``Callable[[str | None], object]`` helper that RealSectorRunner can
-    # adapt. The existing runs.py path builds TradingAgentsGraph internally
-    # via DEFAULT_CONFIG + provider/model strings, which doesn't fit the
-    # sector runner's per-LLM injection model. Until that helper exists, we
-    # explicitly reject production sector-run requests rather than 202ing
-    # and crashing in the background.
-    raise SectorRunnerNotConfigured(
-        "Sector analysis requires WEB_FAKE_RUNNER=true until the real LLM "
-        "factory is wired. See sectors.py::_build_runner TODO."
+
+    provider = os.environ.get(
+        "WEB_SECTOR_LLM_PROVIDER", _DEFAULT_SECTOR_PROVIDER
     )
+    default_deep = os.environ.get(
+        "WEB_SECTOR_DEEP_MODEL", _DEFAULT_SECTOR_DEEP_MODEL
+    )
+    default_quick = os.environ.get(
+        "WEB_SECTOR_QUICK_MODEL", _DEFAULT_SECTOR_QUICK_MODEL
+    )
+
+    def llm_factory(model: str | None) -> object:
+        # Lazy import: keeps web tests fast and avoids loading langgraph LLM
+        # adapters until a real run actually starts.
+        from tradingagents.llm_clients.factory import create_llm_client
+
+        chosen = model or default_deep
+        try:
+            return create_llm_client(provider, chosen).get_llm()
+        except Exception as exc:  # noqa: BLE001 — surface a clean 503 message
+            raise SectorRunnerNotConfigured(
+                f"Failed to build LLM client (provider={provider}, "
+                f"model={chosen}): {exc}"
+            ) from exc
+
+    # Eagerly probe the deep model so a misconfigured provider 503s at the
+    # API edge instead of failing inside the background task.
+    llm_factory(default_quick)
+
+    return RealSectorRunner(bus, llm_factory=llm_factory)
 
 
 def _to_out(sector: Sector, db: OrmSession) -> SectorOut:
