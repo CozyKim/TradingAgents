@@ -28,6 +28,8 @@ from tradingagents_web.models import Sector, SectorReport, SectorRun, User
 from tradingagents_web.schemas.sector import (
     SectorCreate,
     SectorOut,
+    SectorReportOut,
+    SectorReportSummary,
     SectorRunCreate,
     SectorRunOut,
 )
@@ -397,3 +399,61 @@ async def stream_sector_run(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Reports
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{sector_id}/reports", response_model=list[SectorReportSummary]
+)
+async def list_reports(
+    sector_id: int,
+    db: Annotated[OrmSession, Depends(get_db)],
+    _user: Annotated[User, Depends(get_current_user)],
+) -> list[SectorReportSummary]:
+    """List report versions for a sector, newest first."""
+    rows = db.execute(
+        select(SectorReport)
+        .where(SectorReport.sector_id == sector_id)
+        .order_by(desc(SectorReport.version))
+    ).scalars().all()
+    return [SectorReportSummary.model_validate(r) for r in rows]
+
+
+@router.get(
+    "/{sector_id}/reports/latest", response_model=SectorReportOut
+)
+async def get_latest_report(
+    sector_id: int,
+    db: Annotated[OrmSession, Depends(get_db)],
+    _user: Annotated[User, Depends(get_current_user)],
+) -> SectorReportOut:
+    """Return the highest-version report for a sector, or 404 if none."""
+    row = db.execute(
+        select(SectorReport)
+        .where(SectorReport.sector_id == sector_id)
+        .order_by(desc(SectorReport.version))
+        .limit(1)
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no reports yet")
+    return SectorReportOut.model_validate(row)
+
+
+@router.get(
+    "/{sector_id}/reports/{report_id}", response_model=SectorReportOut
+)
+async def get_report(
+    sector_id: int,
+    report_id: int,
+    db: Annotated[OrmSession, Depends(get_db)],
+    _user: Annotated[User, Depends(get_current_user)],
+) -> SectorReportOut:
+    """Return a specific report. 404 if missing OR if it belongs to a different sector."""
+    row = db.get(SectorReport, report_id)
+    if row is None or row.sector_id != sector_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "report not found")
+    return SectorReportOut.model_validate(row)

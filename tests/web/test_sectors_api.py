@@ -183,3 +183,120 @@ def test_start_run_returns_503_without_fake_runner(auth_client, monkeypatch):
     )
     assert resp.status_code == 503
     assert "WEB_FAKE_RUNNER" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Task 16: reports list + latest + single endpoints
+# ---------------------------------------------------------------------------
+
+
+def test_list_reports_empty_initially(auth_client):
+    created = auth_client.post(
+        "/api/sectors", headers=XHR_HEADERS, json={"name": "Empty"}
+    ).json()
+    resp = auth_client.get(f"/api/sectors/{created['id']}/reports")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_latest_report_404_when_no_reports(auth_client):
+    created = auth_client.post(
+        "/api/sectors", headers=XHR_HEADERS, json={"name": "NoReports"}
+    ).json()
+    resp = auth_client.get(f"/api/sectors/{created['id']}/reports/latest")
+    assert resp.status_code == 404
+
+
+def test_reports_lifecycle(auth_client, app_with_test_db):
+    """Insert 3 versions, then verify list ordering + latest + by-id retrieval."""
+    from tradingagents_web.models import Sector, SectorReport, SectorRun
+
+    _, TestSessionLocal = app_with_test_db
+    db = TestSessionLocal()
+    try:
+        sector = Sector(slug="testsec", name="Test", keywords=[], is_preset=False,
+                        created_at=datetime.now(timezone.utc))
+        db.add(sector)
+        db.commit()
+        sector_id = sector.id
+
+        # Build 3 runs + 3 reports with versions 1, 2, 3
+        report_ids: list[int] = []
+        for v in (1, 2, 3):
+            run = SectorRun(
+                id=f"run-{v}", sector_id=sector_id, status="completed",
+                phase="outlook",
+                started_at=datetime.now(timezone.utc),
+                finished_at=datetime.now(timezone.utc),
+            )
+            db.add(run)
+            db.flush()
+            report = SectorReport(
+                sector_id=sector_id, run_id=run.id, version=v,
+                report_md=f"v{v}", value_chain_mermaid="graph LR",
+                companies=[], outlook_summary=f"summary v{v}",
+                candidate_tickers=[],
+                created_at=datetime.now(timezone.utc),
+            )
+            db.add(report)
+            db.flush()
+            report_ids.append(report.id)
+        db.commit()
+    finally:
+        db.close()
+
+    # List: 3 items, version desc
+    listing = auth_client.get(f"/api/sectors/{sector_id}/reports").json()
+    assert [r["version"] for r in listing] == [3, 2, 1]
+
+    # Latest: version 3
+    latest = auth_client.get(f"/api/sectors/{sector_id}/reports/latest").json()
+    assert latest["version"] == 3
+    assert latest["outlook_summary"] == "summary v3"
+    assert latest["report_md"] == "v3"
+
+    # By-id: middle one
+    middle_id = report_ids[1]  # version 2
+    by_id = auth_client.get(
+        f"/api/sectors/{sector_id}/reports/{middle_id}"
+    ).json()
+    assert by_id["version"] == 2
+    assert by_id["report_md"] == "v2"
+
+
+def test_report_for_wrong_sector_returns_404(auth_client, app_with_test_db):
+    """Report belongs to sector A; querying as sector B → 404 (no info leak)."""
+    from tradingagents_web.models import Sector, SectorReport, SectorRun
+
+    _, TestSessionLocal = app_with_test_db
+    db = TestSessionLocal()
+    try:
+        s_a = Sector(slug="a", name="A", keywords=[],
+                     created_at=datetime.now(timezone.utc))
+        s_b = Sector(slug="b", name="B", keywords=[],
+                     created_at=datetime.now(timezone.utc))
+        db.add_all([s_a, s_b])
+        db.commit()
+        run = SectorRun(
+            id="ra", sector_id=s_a.id, status="completed", phase="outlook",
+            started_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(timezone.utc),
+        )
+        db.add(run)
+        db.flush()
+        rep = SectorReport(
+            sector_id=s_a.id, run_id="ra", version=1,
+            report_md="", value_chain_mermaid="", companies=[],
+            outlook_summary="", candidate_tickers=[],
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(rep)
+        db.commit()
+        report_id = rep.id
+        wrong_sector_id = s_b.id
+    finally:
+        db.close()
+    resp = auth_client.get(
+        f"/api/sectors/{wrong_sector_id}/reports/{report_id}"
+    )
+    assert resp.status_code == 404
