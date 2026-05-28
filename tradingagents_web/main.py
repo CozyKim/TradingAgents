@@ -24,6 +24,7 @@ from tradingagents_web.api import prices as prices_api
 from tradingagents_web.api import fx as fx_api
 from tradingagents_web.api import runs as runs_api
 from tradingagents_web.api import schedules as schedules_api
+from tradingagents_web.api import sectors as sectors_api
 from tradingagents_web.api import settings_notifications as settings_notifications_api
 from tradingagents_web.config import Settings
 from tradingagents_web.db import SessionLocal
@@ -117,6 +118,7 @@ def create_app() -> FastAPI:
     app.include_router(runs_api.router)
     app.include_router(chat_api.router)
     app.include_router(schedules_api.router)
+    app.include_router(sectors_api.router)
     app.include_router(settings_notifications_api.router)
     return app
 
