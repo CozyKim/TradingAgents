@@ -35,6 +35,9 @@ export function HistoryTable({ rows, selected, onToggle }: Props) {
             <th className="text-left py-2 px-3">Decision</th>
             <th className="text-right py-2 px-3">Confidence</th>
             <th className="text-right py-2 px-3">Created</th>
+            <th className="text-right py-2 px-3 w-28">
+              <span className="sr-only">트래킹</span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -67,6 +70,17 @@ export function HistoryTable({ rows, selected, onToggle }: Props) {
               </td>
               <td className="py-2 px-3 text-right text-text-3 font-num">
                 {formatKST(r.created_at)}
+              </td>
+              <td className="py-2 px-3 text-right">
+                <Link
+                  href={`/schedules/new?ticker=${encodeURIComponent(
+                    r.ticker,
+                  )}&from_run=${r.run_id}`}
+                  data-testid="track-link"
+                  className="inline-flex items-center gap-1 rounded-md border border-border-1 px-2 py-1 text-2xs text-text-2 hover:bg-bg-2"
+                >
+                  + 트래킹
+                </Link>
               </td>
             </tr>
           ))}
@@ -104,6 +118,17 @@ export function HistoryTable({ rows, selected, onToggle }: Props) {
                 <span>{r.status}</span>
               </div>
             </Link>
+            <div className="flex justify-end border-t border-border-1 px-3 py-2">
+              <Link
+                href={`/schedules/new?ticker=${encodeURIComponent(
+                  r.ticker,
+                )}&from_run=${r.run_id}`}
+                data-testid="track-link"
+                className="inline-flex items-center gap-1 rounded-md border border-border-1 px-2 py-1 text-2xs text-text-2 hover:bg-bg-2"
+              >
+                + 트래킹
+              </Link>
+            </div>
           </li>
         ))}
       </ul>
