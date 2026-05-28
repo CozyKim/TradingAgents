@@ -82,7 +82,9 @@ def _normalize_company(c: dict) -> dict:
     # sources: LLM sometimes returns a bare URL string, null, or a non-list.
     # Wrap singletons, treat null/non-list as empty so a downstream
     # `list[HttpUrl]` validator doesn't crash and we don't accidentally
-    # split a URL into per-character entries.
+    # split a URL into per-character entries. Also drop anything that
+    # doesn't look like an http(s) URL — Pydantic HttpUrl will reject those
+    # at response-serialization time and 500 the request.
     raw_sources = c.get("sources")
     if isinstance(raw_sources, str):
         sources_iter = [raw_sources]
@@ -90,6 +92,10 @@ def _normalize_company(c: dict) -> dict:
         sources_iter = raw_sources
     else:
         sources_iter = []
+    sources_iter = [
+        s for s in sources_iter
+        if isinstance(s, str) and s.lower().startswith(("http://", "https://"))
+    ]
     return {
         "name": str(c.get("name", "Unknown")),
         "ticker": c.get("ticker"),

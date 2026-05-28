@@ -114,6 +114,35 @@ def test_sources_null_becomes_empty():
     assert result["companies"][0]["sources"] == []
 
 
+def test_sources_non_url_strings_dropped():
+    """LLM may put 'IDC 보고서', 'N/A', etc. in sources — must be filtered.
+
+    CompanyShare.sources is list[HttpUrl] so anything non-URL would 500
+    the response serializer.
+    """
+    payload = {"companies": [{
+        "name": "X", "stage": "?", "share_value": 50,
+        "share_basis": "reported", "confidence": "high",
+        "sources": [
+            "IDC 보고서",          # not a URL
+            "N/A",                # not a URL
+            "https://example.com/good",
+            "ftp://nope.com",     # wrong scheme
+            "",                   # empty
+            "https://example.com/another",
+        ],
+    }]}
+    llm = MagicMock()
+    llm.bind_tools.return_value = llm
+    llm.invoke.return_value = AIMessage(content=json.dumps(payload))
+    node = make_competitive_node(llm, budget=None)
+    result = node(SectorState(sector_slug="x", sector_name="X", keywords=[]))
+    assert result["companies"][0]["sources"] == [
+        "https://example.com/good",
+        "https://example.com/another",
+    ]
+
+
 def test_companies_with_non_dict_elements_falls_back():
     """JSON parses but {"companies": ["ASML"]} — element is a str, not dict.
 
