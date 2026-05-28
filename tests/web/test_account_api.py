@@ -198,7 +198,12 @@ def test_mask_token_is_unit_testable():
 
 
 def _make_full_schema_db(path):
-    """Create a SQLite file with all 7 required tables (empty)."""
+    """Create a SQLite file with all required tables (empty).
+
+    Mirrors ``_REQUIRED_TABLES`` in tradingagents_web/api/account.py — when
+    that list grows (M6 added sectors/sector_runs/sector_reports) this
+    fixture must grow with it so restore validation passes.
+    """
     import sqlite3 as _sqlite3
     conn = _sqlite3.connect(path)
     conn.executescript(
@@ -210,6 +215,9 @@ def _make_full_schema_db(path):
         CREATE TABLE schedules (id INTEGER PRIMARY KEY);
         CREATE TABLE alerts (id INTEGER PRIMARY KEY);
         CREATE TABLE settings (key TEXT PRIMARY KEY);
+        CREATE TABLE sectors (id INTEGER PRIMARY KEY);
+        CREATE TABLE sector_runs (id TEXT PRIMARY KEY);
+        CREATE TABLE sector_reports (id INTEGER PRIMARY KEY);
         '''
     )
     conn.commit()

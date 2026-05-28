@@ -43,6 +43,12 @@ _REQUIRED_TABLES: tuple[str, ...] = (
     "schedules",
     "alerts",
     "settings",
+    # M6 sector analysis — backups taken before that migration will fail
+    # restore validation, which is the safe behavior: refusing them surfaces
+    # the schema mismatch instead of silently breaking /api/sectors.
+    "sectors",
+    "sector_runs",
+    "sector_reports",
 )
 
 
