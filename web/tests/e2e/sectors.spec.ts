@@ -87,12 +87,13 @@ test.describe("sector analysis end-to-end", () => {
   });
 
   test("preset sector DELETE is rejected (CSRF + 409 path)", async ({
-    request,
+    page,
   }) => {
-    // Inject a preset row via direct API; require_xhr means we must send the
-    // marker even for the DELETE that should 409 on the is_preset check —
-    // otherwise we'd 403 first.
-    const list = await request.get("/api/sectors");
+    // page.request shares the page's cookie jar so we get the same auth
+    // session as login(). The bare `request` fixture has no cookies and
+    // would 401 before reaching the is_preset check.
+    await login(page);
+    const list = await page.request.get("/api/sectors");
     expect(list.status()).toBe(200);
     const sectors = (await list.json()) as Array<{
       id: number;
@@ -101,7 +102,9 @@ test.describe("sector analysis end-to-end", () => {
     const preset = sectors.find((s) => s.is_preset);
     test.skip(!preset, "No preset sector in test DB — fixture is metadata-only");
     if (!preset) return;
-    const resp = await request.delete(`/api/sectors/${preset.id}`, {
+    // require_xhr means we must send the X-Requested-With marker even for the
+    // DELETE that should 409 on the is_preset check — otherwise we'd 403 first.
+    const resp = await page.request.delete(`/api/sectors/${preset.id}`, {
       headers: { "X-Requested-With": "fetch" },
     });
     expect(resp.status()).toBe(409);
