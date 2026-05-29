@@ -7,6 +7,7 @@ import {
   History,
   Layers,
   Briefcase,
+  Star,
   Clock,
   Flag,
   Bell,
@@ -33,6 +34,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     title: "트래킹",
     items: [
       { href: "/portfolio", label: "포트폴리오", icon: Briefcase },
+      { href: "/watchlist", label: "관심종목", icon: Star },
       { href: "/schedules", label: "스케줄", icon: Clock },
       { href: "/alerts", label: "알림", icon: Flag },
     ],
