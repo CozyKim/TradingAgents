@@ -140,7 +140,16 @@ export async function getReport(sectorId: number, reportId: number): Promise<Sec
 
 export async function getSectorBySlug(slug: string): Promise<SectorSummary | null> {
   const all = await listSectors();
-  return all.find((s) => s.slug === slug) ?? null;
+  // useParams()가 경로 세그먼트를 percent-encoded 상태로 넘길 수 있어,
+  // 한글 등 비-ASCII slug는 DB의 디코딩된 값과 직접 비교하면 어긋난다.
+  // 원본과 디코딩본을 모두 비교해 양쪽 케이스를 안전하게 매칭한다.
+  let decoded = slug;
+  try {
+    decoded = decodeURIComponent(slug);
+  } catch {
+    /* 잘못된 인코딩이면 원본 그대로 비교 */
+  }
+  return all.find((s) => s.slug === slug || s.slug === decoded) ?? null;
 }
 
 export async function getActiveRun(sectorId: number): Promise<SectorRun | null> {
