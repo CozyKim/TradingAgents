@@ -2,8 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { createSector, openTrendingStream, startTrendingScan, type TrendingSector } from "@/lib/sectors";
+import {
+  createSector,
+  getTrendingScan,
+  listTrendingScans,
+  openTrendingStream,
+  startTrendingScan,
+  type TrendingSector,
+} from "@/lib/sectors";
 
 export default function NewSectorPage() {
   const router = useRouter();
@@ -13,27 +21,43 @@ export default function NewSectorPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const qc = useQueryClient();
   const [scanning, setScanning] = useState(false);
   const [scanStage, setScanStage] = useState<string>("");
-  const [trending, setTrending] = useState<TrendingSector[]>([]);
   const [scanError, setScanError] = useState<string | null>(null);
-  const [scanned, setScanned] = useState(false);
+  const [selectedScanId, setSelectedScanId] = useState<number | null>(null);
   const cancelStreamRef = useRef<(() => void) | null>(null);
 
+  // Saved scan versions (newest first). Drives the version selector + restore.
+  const scans = useQuery({
+    queryKey: ["trending-scans"],
+    queryFn: listTrendingScans,
+  });
+
+  // The scan to display: explicit selection, else the newest saved scan.
+  const activeScanId = selectedScanId ?? scans.data?.[0]?.id ?? null;
+
+  const activeScan = useQuery({
+    queryKey: ["trending-scan", activeScanId],
+    queryFn: () => getTrendingScan(activeScanId as number),
+    enabled: activeScanId != null,
+  });
+
+  const trending = activeScan.data?.sectors ?? [];
+
   async function onScan() {
-    cancelStreamRef.current?.();        // cancel any in-flight stream
+    cancelStreamRef.current?.();
     setScanning(true);
     setScanError(null);
-    setTrending([]);
-    setScanned(false);
     try {
       const { job_id } = await startTrendingScan();
       cancelStreamRef.current = openTrendingStream(job_id, {
         onProgress: (d) => setScanStage(d.message ?? d.stage ?? ""),
-        onDone: (sectors) => {
-          setTrending(sectors);
-          setScanned(true);
+        onDone: async (_sectors, scanId) => {
           setScanning(false);
+          // Refresh the version list, then select the freshly saved scan.
+          await qc.invalidateQueries({ queryKey: ["trending-scans"] });
+          if (scanId != null) setSelectedScanId(scanId);
         },
         onError: (msg) => {
           setScanError(msg);
@@ -97,10 +121,29 @@ export default function NewSectorPage() {
           </button>
         </div>
 
+        {(scans.data?.length ?? 0) > 0 && (
+          <div className="mt-3 flex items-center gap-2">
+            <label className="text-xs text-text-3">버전</label>
+            <select
+              value={activeScanId ?? ""}
+              onChange={(e) => setSelectedScanId(Number(e.target.value))}
+              className="rounded-md border border-border-1 bg-bg-1 px-2 py-1 text-xs text-text-1"
+            >
+              {scans.data!.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {new Date(s.created_at).toLocaleString("ko-KR")} · {s.sector_count}개
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {scanError && <p className="mt-3 text-sm text-signal-buy">{scanError}</p>}
 
-        {scanned && !scanning && !scanError && trending.length === 0 && (
-          <p className="mt-3 text-sm text-text-3">추천 결과가 없습니다. 잠시 후 다시 시도해 주세요.</p>
+        {!scanning && !scanError && (scans.data?.length ?? 0) === 0 && (
+          <p className="mt-3 text-sm text-text-3">
+            아직 추천 기록이 없습니다. "🔥 핫 섹터 추천받기"를 눌러 시작하세요.
+          </p>
         )}
 
         {trending.length > 0 && (
