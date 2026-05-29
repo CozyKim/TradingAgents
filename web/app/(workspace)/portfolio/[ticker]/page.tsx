@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useMemo } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useHoldings } from "@/hooks/use-holdings";
 import { useRunList } from "@/hooks/use-runs";
@@ -14,6 +14,12 @@ import { useCurrency, formatPrice } from "@/lib/currency";
 export default function PortfolioDetail() {
   const params = useParams<{ ticker: string }>();
   const ticker = params.ticker.toUpperCase();
+  const searchParams = useSearchParams();
+  // 출처에 따라 back 링크를 분기. 기본은 포트폴리오, watchlist에서 왔으면 관심종목으로.
+  const back =
+    searchParams.get("from") === "watchlist"
+      ? { href: "/watchlist", label: "← 관심종목으로" }
+      : { href: "/portfolio", label: "← back to portfolio" };
   const { data: holdings } = useHoldings();
   const { data: history } = useRunList({ ticker, page_size: 50 });
   const { data: price, isLoading: priceLoading } = usePriceHistory(ticker, 365);
@@ -49,8 +55,8 @@ export default function PortfolioDetail() {
     <div className="px-4 md:px-6 py-6 md:py-8 max-w-screen-xl mx-auto space-y-6">
       <div className="flex items-baseline gap-3">
         <h1 className="text-2xl font-bold font-mono">{ticker}</h1>
-        <Link href="/portfolio" className="text-xs text-text-3 hover:underline">
-          ← back to portfolio
+        <Link href={back.href} className="text-xs text-text-3 hover:underline">
+          {back.label}
         </Link>
       </div>
 
