@@ -186,6 +186,9 @@ def _build_trending_finder(bus: EventBus):
         ret = (recent - prior) / prior * 100.0 if prior else 0.0
         return {"avg_return_pct": float(ret)}
 
+    # NOTE: unlike _build_runner, we deliberately do NOT eagerly probe the LLM
+    # here — a trending scan is best-effort and surfaces provider/search
+    # failures via the SSE `error` event (or an empty result), not a 503.
     return TrendingSectorFinder(
         bus,
         llm_json=llm_json,

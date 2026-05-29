@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from collections.abc import Callable
 from datetime import date
 from typing import Any
@@ -28,6 +29,10 @@ from tradingagents_web.services.trending_score import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Tickers come from LLM output and flow into outbound HTTP (yfinance / StockTwits).
+# Accept only plausible symbols; drop anything else.
+_TICKER_RE = re.compile(r"^[A-Za-z.\-]{1,8}$")
 
 # Number of recency-filtered web searches per scan (natural budget cap —
 # there is no ReAct loop here, just a fixed seed-query set).
@@ -231,6 +236,10 @@ class TrendingSectorFinder:
     async def find(self, job_id: str) -> list[TrendingSector]:
         """Run the 4-stage pipeline, emitting progress; never raises.
 
+        Individual malformed themes or scoring failures are skipped with a
+        warning so a single bad LLM item does not abort the entire scan.
+        Returns whatever scored successfully — possibly an empty list.
+
         Args:
             job_id: EventBus run-id to publish progress under.
 
@@ -249,8 +258,18 @@ class TrendingSectorFinder:
         # 2) enrich
         enriched: list[TrendingSector] = []
         for i, theme in enumerate(themes, start=1):
-            _progress(self.bus, job_id, "enrich", progress=f"{i}/{len(themes)}")
-            enriched.append(await asyncio.to_thread(self._score_theme, theme))
+            _progress(
+                self.bus, job_id, "enrich",
+                progress=f"{i}/{len(themes)}",
+                message="종목 신호 수집 중…",
+            )
+            if not isinstance(theme, dict):
+                logger.warning("skipping non-dict theme: %r", theme)
+                continue
+            try:
+                enriched.append(await asyncio.to_thread(self._score_theme, theme))
+            except Exception:  # noqa: BLE001 — skip a bad theme, keep the rest
+                logger.exception("scoring theme failed; skipping: %r", theme.get("name"))
 
         # 3) score (already computed per theme) + 4) rank
         _progress(self.bus, job_id, "score", message="점수 계산 중…")
@@ -278,7 +297,10 @@ class TrendingSectorFinder:
         return []
 
     def _score_theme(self, theme: dict) -> TrendingSector:
-        tickers = [t for t in (theme.get("tickers") or []) if t][:3]
+        tickers = [
+            t for t in (theme.get("tickers") or [])
+            if isinstance(t, str) and _TICKER_RE.match(t)
+        ][:3]
         bullish = bearish = total_msgs = 0
         returns: list[float] = []
         for tk in tickers:
@@ -294,7 +316,10 @@ class TrendingSectorFinder:
             except Exception:  # noqa: BLE001
                 logger.debug("momentum_fn failed for %s", tk)
 
-        web_trend = max(0.0, min(100.0, float(theme.get("web_trend", 0))))
+        try:
+            web_trend = max(0.0, min(100.0, float(theme.get("web_trend", 0))))
+        except (TypeError, ValueError):
+            web_trend = 0.0
         vol = volume_score(total_msgs)
         sent = sentiment_score(bullish, bearish)
         mom = momentum_score(sum(returns) / len(returns) if returns else 0.0)

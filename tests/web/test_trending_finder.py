@@ -119,3 +119,38 @@ def test_real_finder_pipeline_with_injected_callables():
     assert s.signals.sentiment == 80.0  # 8/(8+2)*100
     assert 0 <= s.hotness_score <= 100
     assert s.rationale  # 비어있지 않음
+
+
+def test_real_finder_skips_malformed_theme_keeps_good_ones():
+    bus = EventBus()
+
+    def fake_search(query, *, days, client_search=None):
+        return []
+
+    def fake_llm_json(prompt: str) -> str:
+        return json.dumps(
+            {
+                "themes": [
+                    "not-a-dict",  # malformed
+                    {"name": "정상 테마", "web_trend": 70, "tickers": ["AAPL"]},
+                    {"name": "이상치", "web_trend": "high", "tickers": ["x x x"]},  # bad web_trend + bad ticker
+                ]
+            },
+            ensure_ascii=False,
+        )
+
+    finder = TrendingSectorFinder(
+        bus,
+        llm_json=fake_llm_json,
+        search_fn=fake_search,
+        social_fn=lambda t: {"bullish": 1, "bearish": 0, "total_messages": 5},
+        momentum_fn=lambda t: {"avg_return_pct": 1.0},
+        today=date(2026, 5, 30),
+    )
+    sectors = asyncio.run(finder.find("job-mal"))
+    names = [s.name for s in sectors]
+    assert "정상 테마" in names
+    # the "이상치" theme still scores (web_trend coerced to 0, bad ticker dropped)
+    assert "이상치" in names
+    # the bare string was skipped entirely
+    assert len(sectors) == 2
