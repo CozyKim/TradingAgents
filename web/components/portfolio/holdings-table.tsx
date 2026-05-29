@@ -6,6 +6,7 @@ import { useDeleteHolding } from "@/hooks/use-holdings";
 import { useCurrency, formatPrice } from "@/lib/currency";
 import { MonitorToggle } from "./monitor-toggle";
 import { PnLCell } from "./pnl-cell";
+import { QtyCell, AvgCostCell } from "./qty-cell";
 
 export function HoldingsTable({
   rows,
@@ -47,9 +48,11 @@ export function HoldingsTable({
                     {h.ticker}
                   </Link>
                 </td>
-                <td className="text-right font-mono tabular-nums">{h.qty}</td>
-                <td className="text-right font-mono tabular-nums">
-                  {formatPrice(h.avg_cost, ctx)}
+                <td className="text-right">
+                  <QtyCell holdingId={h.id} qty={h.qty} />
+                </td>
+                <td className="text-right">
+                  <AvgCostCell holdingId={h.id} avgCost={h.avg_cost} />
                 </td>
                 <td className="text-right font-mono tabular-nums">
                   {formatPrice(last, ctx)}

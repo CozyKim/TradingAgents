@@ -8,6 +8,7 @@ import { useRunList } from "@/hooks/use-runs";
 import { usePriceHistory } from "@/hooks/use-price-history";
 import { useChartSettings } from "@/hooks/use-chart-settings";
 import { CandleChart, type SignalMarker } from "@/components/portfolio/candle-chart";
+import { QtyCell, AvgCostCell } from "@/components/portfolio/qty-cell";
 import { SignalBadge } from "@/components/shared/signal-badge";
 import { useCurrency, formatPrice } from "@/lib/currency";
 
@@ -61,15 +62,14 @@ export default function PortfolioDetail() {
               <div className="text-2xs uppercase tracking-widest text-text-3">
                 Quantity
               </div>
-              <div className="font-mono tabular-nums">{holding.qty}</div>
+              <QtyCell holdingId={holding.id} qty={holding.qty} />
+
             </div>
             <div>
               <div className="text-2xs uppercase tracking-widest text-text-3">
                 Avg cost
               </div>
-              <div className="font-mono tabular-nums">
-                {formatPrice(holding.avg_cost, ctx)}
-              </div>
+              <AvgCostCell holdingId={holding.id} avgCost={holding.avg_cost} />
             </div>
             <div>
               <div className="text-2xs uppercase tracking-widest text-text-3">
