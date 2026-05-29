@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -30,3 +32,19 @@ class TrendingScanOut(BaseModel):
     """202 response body for a started trending scan."""
 
     job_id: str
+
+
+class TrendingScanSummary(BaseModel):
+    """List item for the scan-history dropdown."""
+
+    id: int
+    created_at: datetime
+    sector_count: int
+
+
+class TrendingScanDetail(BaseModel):
+    """Full stored scan with its ranked sectors."""
+
+    id: int
+    created_at: datetime
+    sectors: list[dict]

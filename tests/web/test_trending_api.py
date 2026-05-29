@@ -87,9 +87,20 @@ def test_trending_stream_emits_done_with_sectors(auth_client, monkeypatch):
     assert "온디바이스 AI" in body  # matches the done event we published above
 
 
-def test_execute_trending_scan_publishes_done_with_sectors():
+def test_execute_trending_scan_publishes_done_with_sectors(monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from tradingagents_web.api import sectors as sectors_api
     from tradingagents_web.api.sectors import _execute_trending_scan, get_event_bus
+    from tradingagents_web.models import Base
     from tradingagents_web.services.trending_finder import FakeTrendingFinder
+
+    # Provide an in-memory DB so the new persistence path works without prod DB.
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    TestSession = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    monkeypatch.setattr(sectors_api, "_session_factory", TestSession)
 
     bus = get_event_bus()
     job_id = "drv-test-1"

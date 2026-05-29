@@ -24,7 +24,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from tradingagents_web.auth import get_current_user, require_xhr
 from tradingagents_web.db import SessionLocal, get_db
-from tradingagents_web.models import Sector, SectorReport, SectorRun, User
+from tradingagents_web.models import Sector, SectorReport, SectorRun, TrendingScan, User
 from tradingagents_web.schemas.sector import (
     SectorCreate,
     SectorOut,
@@ -38,7 +38,11 @@ from tradingagents_web.services.event_bus import (
     EventBus,
     get_event_bus,
 )
-from tradingagents_web.schemas.trending import TrendingScanOut
+from tradingagents_web.schemas.trending import (
+    TrendingScanDetail,
+    TrendingScanOut,
+    TrendingScanSummary,
+)
 from tradingagents_web.services.sector_fake_runner import (
     FakeSectorRunner,
     SectorRunRequest,
@@ -219,7 +223,7 @@ async def start_trending_scan(
 
 
 async def _execute_trending_scan(finder, job_id: str) -> None:
-    """Background driver: run finder, publish done(sectors) + finish.
+    """Background driver: run finder, persist (if any), publish done + finish.
 
     Args:
         finder: A TrendingSectorFinder or FakeTrendingFinder instance.
@@ -228,18 +232,60 @@ async def _execute_trending_scan(finder, job_id: str) -> None:
     bus = get_event_bus()
     try:
         sectors = await finder.find(job_id)
-        bus.publish(
-            job_id,
-            AnalysisEvent(
-                type="done",
-                data={"sectors": [s.model_dump() for s in sectors]},
-            ),
-        )
+        payload: dict = {"sectors": [s.model_dump() for s in sectors]}
+        if sectors:
+            # Persist BEFORE done so an SSE consumer reacting to `done` (and the
+            # scan_id) always finds the row already committed.
+            db = _session_factory()
+            try:
+                scan = TrendingScan(sectors=payload["sectors"])
+                db.add(scan)
+                db.commit()
+                db.refresh(scan)
+                scan_id = scan.id  # capture before close
+                payload["scan_id"] = scan_id
+            finally:
+                db.close()
+        bus.publish(job_id, AnalysisEvent(type="done", data=payload))
     except Exception as exc:  # noqa: BLE001
         logger.exception("trending scan %s failed", job_id)
         bus.publish(job_id, AnalysisEvent(type="error", data={"message": str(exc)}))
     finally:
         bus.finish(job_id)
+
+
+@router.get("/trending/scans", response_model=list[TrendingScanSummary])
+async def list_trending_scans(
+    db: Annotated[OrmSession, Depends(get_db)],
+    _user: Annotated[User, Depends(get_current_user)],
+) -> list[TrendingScanSummary]:
+    """Return saved hot-sector scans, newest first."""
+    rows = (
+        db.execute(select(TrendingScan).order_by(desc(TrendingScan.created_at)))
+        .scalars()
+        .all()
+    )
+    return [
+        TrendingScanSummary(
+            id=r.id, created_at=r.created_at, sector_count=len(r.sectors or [])
+        )
+        for r in rows
+    ]
+
+
+@router.get("/trending/scans/{scan_id}", response_model=TrendingScanDetail)
+async def get_trending_scan(
+    scan_id: int,
+    db: Annotated[OrmSession, Depends(get_db)],
+    _user: Annotated[User, Depends(get_current_user)],
+) -> TrendingScanDetail:
+    """Return one saved scan with its ranked sectors."""
+    row = db.get(TrendingScan, scan_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "scan not found")
+    return TrendingScanDetail(
+        id=row.id, created_at=row.created_at, sectors=row.sectors or []
+    )
 
 
 @router.get("/trending/{job_id}/stream")
