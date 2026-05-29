@@ -38,7 +38,7 @@ from tradingagents_web.services.event_bus import (
     EventBus,
     get_event_bus,
 )
-from tradingagents_web.schemas.trending import TrendingScanOut, TrendingSector
+from tradingagents_web.schemas.trending import TrendingScanOut
 from tradingagents_web.services.sector_fake_runner import (
     FakeSectorRunner,
     SectorRunRequest,
@@ -160,10 +160,11 @@ def _build_trending_finder(bus: EventBus):
     model = os.environ.get("WEB_SECTOR_DEEP_MODEL", _DEFAULT_SECTOR_DEEP_MODEL)
 
     def llm_json(prompt: str) -> str:
+        from tradingagents.llm_clients.base_client import normalize_content
         from tradingagents.llm_clients.factory import create_llm_client
 
         llm = create_llm_client(provider, model).get_llm()
-        return llm.invoke(prompt).content  # LangChain BaseChatModel
+        return normalize_content(llm.invoke(prompt)).content
 
     def social_fn(ticker: str) -> dict:
         from tradingagents.dataflows.stocktwits import get_social_messages_stocktwits

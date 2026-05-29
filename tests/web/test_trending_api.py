@@ -1,10 +1,24 @@
 """Tests for the hot-sector (trending) recommendation API."""
 
+import asyncio
+
+import pytest
+
 from tradingagents_web.schemas.trending import (
     TrendingScanOut,
     TrendingSector,
     TrendingSignals,
 )
+from tradingagents_web.services.event_bus import AnalysisEvent, get_event_bus, reset_event_bus
+
+XHR_HEADERS = {"X-Requested-With": "fetch"}
+
+
+@pytest.fixture(autouse=True)
+def _reset_bus():
+    reset_event_bus()
+    yield
+    reset_event_bus()
 
 
 def test_trending_schemas_importable():
@@ -13,13 +27,6 @@ def test_trending_schemas_importable():
     out = TrendingScanOut(job_id="abc")
     assert sector.signals.momentum == 40
     assert out.job_id == "abc"
-
-
-import os
-
-from tradingagents_web.services.event_bus import AnalysisEvent, get_event_bus
-
-XHR_HEADERS = {"X-Requested-With": "fetch"}
 
 
 def test_start_trending_scan_returns_job_id(auth_client, monkeypatch):
@@ -77,4 +84,22 @@ def test_trending_stream_emits_done_with_sectors(auth_client, monkeypatch):
 
     assert "event: progress" in body
     assert "event: done" in body
-    assert "온디바이스 AI" in body  # FakeTrendingFinder dummy
+    assert "온디바이스 AI" in body  # matches the done event we published above
+
+
+def test_execute_trending_scan_publishes_done_with_sectors():
+    from tradingagents_web.api.sectors import _execute_trending_scan, get_event_bus
+    from tradingagents_web.services.trending_finder import FakeTrendingFinder
+
+    bus = get_event_bus()
+    job_id = "drv-test-1"
+    finder = FakeTrendingFinder(bus)
+    asyncio.run(_execute_trending_scan(finder, job_id))
+
+    events = bus.history(job_id)
+    types = [e.type for e in events]
+    assert "done" in types
+    done = next(e for e in events if e.type == "done")
+    names = [s["name"] for s in done.data["sectors"]]
+    assert "온디바이스 AI" in names
+    assert bus.is_finished(job_id)
