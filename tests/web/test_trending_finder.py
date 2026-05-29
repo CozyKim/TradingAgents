@@ -46,3 +46,8 @@ def test_search_recent_swallows_errors_and_returns_empty():
         raise RuntimeError("network down")
 
     assert search_recent("x", days=7, client_search=boom) == []
+
+
+def test_search_recent_returns_empty_when_no_api_key(monkeypatch):
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    assert search_recent("x", days=7) == []

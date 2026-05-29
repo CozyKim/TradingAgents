@@ -46,7 +46,7 @@ def build_seed_queries(today: date) -> list[str]:
     return [
         f"{y}년 {m_kr} 지금 뜨는 투자 테마 주식",
         f"{y}년 {m_kr} 급등 섹터 종목",
-        f"이번 주 화제의 종목 커뮤니티 {y}",
+        f"{y}년 {m_kr} 이번 주 화제의 종목 커뮤니티",
         f"trending stock themes {m_en}",
         f"hottest market sectors {m_en} retail investors",
         f"stocks reddit wallstreetbets trending {m_en}",
@@ -73,9 +73,13 @@ def search_recent(
     """
     try:
         if client_search is None:
+            api_key = os.environ.get("TAVILY_API_KEY")
+            if not api_key:
+                logger.warning("TAVILY_API_KEY not set; search_recent returning []")
+                return []
             from tavily import TavilyClient
 
-            client = TavilyClient(api_key=os.environ.get("TAVILY_API_KEY"))
+            client = TavilyClient(api_key=api_key)
             client_search = client.search
         raw = client_search(
             query,
