@@ -4,3 +4,7 @@ node_modules/
 next-env.d.ts
 out/
 *.tsbuildinfo
+
+# Playwright E2E run artifacts
+test-results/
+playwright-report/
