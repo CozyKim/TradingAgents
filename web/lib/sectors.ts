@@ -191,9 +191,35 @@ export async function startTrendingScan(): Promise<{ job_id: string }> {
   return r.json();
 }
 
+export interface TrendingScanSummary {
+  id: number;
+  created_at: string;
+  sector_count: number;
+}
+
+export interface TrendingScanDetail {
+  id: number;
+  created_at: string;
+  sectors: TrendingSector[];
+}
+
+export async function listTrendingScans(): Promise<TrendingScanSummary[]> {
+  const r = await fetch("/api/sectors/trending/scans", { credentials: "include" });
+  if (!r.ok) throw new Error(`listTrendingScans ${r.status}`);
+  return r.json();
+}
+
+export async function getTrendingScan(id: number): Promise<TrendingScanDetail> {
+  const r = await fetch(`/api/sectors/trending/scans/${id}`, {
+    credentials: "include",
+  });
+  if (!r.ok) throw new Error(`getTrendingScan ${r.status}`);
+  return r.json();
+}
+
 export type TrendingStreamHandlers = {
   onProgress?: (data: { stage?: string; message?: string; progress?: string }) => void;
-  onDone?: (sectors: TrendingSector[]) => void;
+  onDone?: (sectors: TrendingSector[], scanId?: number) => void;
   onError?: (message: string) => void;
 };
 
@@ -219,7 +245,7 @@ export function openTrendingStream(
   es.addEventListener("done", (raw) => {
     try {
       const data = JSON.parse((raw as MessageEvent).data);
-      handlers.onDone?.(data.sectors ?? []);
+      handlers.onDone?.(data.sectors ?? [], data.scan_id);
     } catch {
       handlers.onDone?.([]);
     }
