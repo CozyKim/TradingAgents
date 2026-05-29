@@ -38,11 +38,17 @@ from tradingagents_web.services.event_bus import (
     EventBus,
     get_event_bus,
 )
+from tradingagents_web.schemas.trending import TrendingScanOut, TrendingSector
 from tradingagents_web.services.sector_fake_runner import (
     FakeSectorRunner,
     SectorRunRequest,
 )
 from tradingagents_web.services.sector_runner import RealSectorRunner
+from tradingagents_web.services.trending_finder import (
+    FakeTrendingFinder,
+    TrendingSectorFinder,
+    search_recent,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +142,135 @@ def _build_runner(bus: EventBus):
     llm_factory(default_quick)
 
     return RealSectorRunner(bus, llm_factory=llm_factory)
+
+
+def _build_trending_finder(bus: EventBus):
+    """FakeTrendingFinder when WEB_FAKE_RUNNER, else a wired real finder.
+
+    Args:
+        bus: The shared :class:`EventBus` instance.
+
+    Returns:
+        A finder exposing an awaitable ``find(job_id)`` method.
+    """
+    if os.environ.get("WEB_FAKE_RUNNER", "false").lower() == "true":
+        return FakeTrendingFinder(bus)
+
+    provider = os.environ.get("WEB_SECTOR_LLM_PROVIDER", _DEFAULT_SECTOR_PROVIDER)
+    model = os.environ.get("WEB_SECTOR_DEEP_MODEL", _DEFAULT_SECTOR_DEEP_MODEL)
+
+    def llm_json(prompt: str) -> str:
+        from tradingagents.llm_clients.factory import create_llm_client
+
+        llm = create_llm_client(provider, model).get_llm()
+        return llm.invoke(prompt).content  # LangChain BaseChatModel
+
+    def social_fn(ticker: str) -> dict:
+        from tradingagents.dataflows.stocktwits import get_social_messages_stocktwits
+
+        md = get_social_messages_stocktwits(ticker, limit=50)
+        bullish = md.count("(Bullish)")
+        bearish = md.count("(Bearish)")
+        total = md.count("\n- [")
+        return {"bullish": bullish, "bearish": bearish, "total_messages": total}
+
+    def momentum_fn(ticker: str) -> dict:
+        import yfinance as yf
+
+        hist = yf.Ticker(ticker).history(period="1mo")
+        if hist.empty or len(hist) < 6:
+            return {"avg_return_pct": 0.0}
+        recent = hist["Close"].iloc[-1]
+        prior = hist["Close"].iloc[-6]
+        ret = (recent - prior) / prior * 100.0 if prior else 0.0
+        return {"avg_return_pct": float(ret)}
+
+    return TrendingSectorFinder(
+        bus,
+        llm_json=llm_json,
+        search_fn=search_recent,
+        social_fn=social_fn,
+        momentum_fn=momentum_fn,
+        today=datetime.now(timezone.utc).date(),
+    )
+
+
+@router.post(
+    "/trending",
+    response_model=TrendingScanOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def start_trending_scan(
+    _user: Annotated[User, Depends(get_current_user)],
+    _csrf: Annotated[None, Depends(require_xhr)] = None,
+) -> TrendingScanOut:
+    """Start a background hot-sector scan and return its SSE job_id."""
+    bus = get_event_bus()
+    finder = _build_trending_finder(bus)
+    job_id = str(uuid.uuid4())
+    task = asyncio.create_task(_execute_trending_scan(finder, job_id))
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+    return TrendingScanOut(job_id=job_id)
+
+
+async def _execute_trending_scan(finder, job_id: str) -> None:
+    """Background driver: run finder, publish done(sectors) + finish.
+
+    Args:
+        finder: A TrendingSectorFinder or FakeTrendingFinder instance.
+        job_id: EventBus run-id to publish events under.
+    """
+    bus = get_event_bus()
+    try:
+        sectors = await finder.find(job_id)
+        bus.publish(
+            job_id,
+            AnalysisEvent(
+                type="done",
+                data={"sectors": [s.model_dump() for s in sectors]},
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("trending scan %s failed", job_id)
+        bus.publish(job_id, AnalysisEvent(type="error", data={"message": str(exc)}))
+    finally:
+        bus.finish(job_id)
+
+
+@router.get("/trending/{job_id}/stream")
+async def stream_trending_scan(
+    job_id: str,
+    _user: Annotated[User, Depends(get_current_user)],
+) -> EventSourceResponse:
+    """SSE stream of a trending scan's progress + terminal done/error.
+
+    Args:
+        job_id: The scan UUID to subscribe to.
+        _user: Authenticated user (injected).
+
+    Returns:
+        EventSourceResponse streaming :class:`AnalysisEvent` items as SSE.
+    """
+    bus = get_event_bus()
+
+    async def event_stream():
+        async with bus.subscribe(job_id) as queue:
+            while True:
+                ev = await queue.get()
+                if ev is None:
+                    yield {"event": "close", "data": "{}"}
+                    return
+                yield {
+                    "event": ev.type,
+                    "id": str(ev.seq),
+                    "data": json.dumps(ev.data, ensure_ascii=False, default=str),
+                }
+
+    return EventSourceResponse(
+        event_stream(),
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 def _to_out(sector: Sector, db: OrmSession) -> SectorOut:
