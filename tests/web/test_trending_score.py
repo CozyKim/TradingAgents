@@ -44,3 +44,20 @@ def test_weighted_hotness_uses_weights_summing_to_one():
     assert weighted_hotness(
         web_trend=100, community_volume=100, sentiment=100, momentum=100
     ) == pytest.approx(100.0)
+
+
+def test_volume_score_at_saturation_is_100():
+    from tradingagents_web.services.trending_score import _VOLUME_SATURATION
+
+    assert volume_score(total_messages=_VOLUME_SATURATION) == 100.0
+
+
+def test_weighted_hotness_reflects_individual_weights():
+    # only web_trend at 100 -> 35.0 (its weight)
+    assert weighted_hotness(
+        web_trend=100, community_volume=0, sentiment=0, momentum=0
+    ) == pytest.approx(35.0)
+    # only sentiment at 100 -> 20.0
+    assert weighted_hotness(
+        web_trend=0, community_volume=0, sentiment=100, momentum=0
+    ) == pytest.approx(20.0)
