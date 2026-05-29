@@ -197,6 +197,9 @@ export function openTrendingStream(
     `/api/sectors/trending/${encodeURIComponent(jobId)}/stream`,
     { withCredentials: true },
   );
+  // Track whether the stream ended normally via the "close" event.
+  let closed = false;
+
   es.addEventListener("progress", (raw) => {
     try {
       handlers.onProgress?.(JSON.parse((raw as MessageEvent).data));
@@ -219,6 +222,19 @@ export function openTrendingStream(
       /* EventSource connection error event has no JSON body */
     }
   });
-  es.addEventListener("close", () => es.close());
-  return () => es.close();
+  es.addEventListener("close", () => {
+    closed = true;
+    es.close();
+  });
+  // Guard against network drops that don't emit a server-side "error" event.
+  // Only fire once the EventSource is fully CLOSED and not via a normal close.
+  es.onerror = () => {
+    if (!closed && es.readyState === EventSource.CLOSED) {
+      handlers.onError?.("스트림 연결이 끊겼습니다.");
+    }
+  };
+  return () => {
+    closed = true;
+    es.close();
+  };
 }
