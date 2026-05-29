@@ -8,6 +8,7 @@ from tradingagents_web.models.schedule import Schedule
 from tradingagents_web.models.sector import Sector
 from tradingagents_web.models.sector_report import SectorReport
 from tradingagents_web.models.sector_run import SectorRun
+from tradingagents_web.models.trending_scan import TrendingScan
 from tradingagents_web.models.session import Session
 from tradingagents_web.models.setting import Setting
 from tradingagents_web.models.user import User
@@ -25,5 +26,6 @@ __all__ = [
     "Session",
     "Setting",
     "TimestampMixin",
+    "TrendingScan",
     "User",
 ]
