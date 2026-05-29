@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { createSector, openTrendingStream, startTrendingScan, type TrendingSector } from "@/lib/sectors";
 
@@ -17,17 +17,22 @@ export default function NewSectorPage() {
   const [scanStage, setScanStage] = useState<string>("");
   const [trending, setTrending] = useState<TrendingSector[]>([]);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [scanned, setScanned] = useState(false);
+  const cancelStreamRef = useRef<(() => void) | null>(null);
 
   async function onScan() {
+    cancelStreamRef.current?.();        // cancel any in-flight stream
     setScanning(true);
     setScanError(null);
     setTrending([]);
+    setScanned(false);
     try {
       const { job_id } = await startTrendingScan();
-      openTrendingStream(job_id, {
-        onProgress: (d) => setScanStage(d.stage ?? ""),
+      cancelStreamRef.current = openTrendingStream(job_id, {
+        onProgress: (d) => setScanStage(d.message ?? d.stage ?? ""),
         onDone: (sectors) => {
           setTrending(sectors);
+          setScanned(true);
           setScanning(false);
         },
         onError: (msg) => {
@@ -40,6 +45,8 @@ export default function NewSectorPage() {
       setScanning(false);
     }
   }
+
+  useEffect(() => () => cancelStreamRef.current?.(), []);
 
   function applyTrending(s: TrendingSector) {
     setName(s.name);
@@ -92,11 +99,15 @@ export default function NewSectorPage() {
 
         {scanError && <p className="mt-3 text-sm text-signal-buy">{scanError}</p>}
 
+        {scanned && !scanning && !scanError && trending.length === 0 && (
+          <p className="mt-3 text-sm text-text-3">추천 결과가 없습니다. 잠시 후 다시 시도해 주세요.</p>
+        )}
+
         {trending.length > 0 && (
           <ul className="mt-4 space-y-2">
-            {trending.map((s) => (
+            {trending.map((s, i) => (
               <li
-                key={s.name}
+                key={`${s.name}-${i}`}
                 className="rounded-lg border border-border-1 bg-bg-1 p-3"
               >
                 <div className="flex items-center justify-between gap-2">
