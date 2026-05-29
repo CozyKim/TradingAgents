@@ -150,7 +150,10 @@ def _build_discover_prompt(today: date, snippets: list[dict]) -> str:
 
 
 def _parse_themes(raw: str) -> list[dict]:
-    """Parse the LLM JSON; tolerate accidental code fences.
+    """Parse the LLM JSON; tolerate accidental code fences / prose.
+
+    Extracts the outermost {...} span, so a code fence or leading prose
+    around the JSON object does not break parsing.
 
     Args:
         raw: The model's raw text response.
@@ -158,11 +161,11 @@ def _parse_themes(raw: str) -> list[dict]:
     Returns:
         The list under the ``themes`` key, or [] if absent/not a list.
     """
-    text = raw.strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        text = text[text.find("{") : text.rfind("}") + 1]
-    data = json.loads(text)
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start == -1 or end == -1 or end < start:
+        return []
+    data = json.loads(raw[start : end + 1])
     themes = data.get("themes", [])
     return themes if isinstance(themes, list) else []
 
@@ -257,6 +260,14 @@ class TrendingSectorFinder:
         return ranked
 
     async def _extract_themes(self, snippets: list[dict]) -> list[dict]:
+        """Prompt the LLM for themes, parsing JSON with one retry on failure.
+
+        Args:
+            snippets: Recency-filtered search hits to ground the extraction.
+
+        Returns:
+            Parsed theme dicts, or [] if both attempts fail.
+        """
         prompt = _build_discover_prompt(self.today, snippets)
         for attempt in range(2):  # 1 retry on parse failure
             try:
@@ -327,7 +338,10 @@ class FakeTrendingFinder:
         """
         for stage in ("discover", "enrich", "score", "rank"):
             _progress(self.bus, job_id, stage, message=f"{stage}…")
+            # Small delay so the UI can render each stage transition during E2E.
             await asyncio.sleep(0.01)
+        # Hand-picked dummy values (hotness not recomputed from signals) — this
+        # finder only exercises the SSE/UI path under WEB_FAKE_RUNNER.
         dummy = [
             ("온디바이스 AI", 82.0, 80, 75, 85, 70, ["AAPL", "QCOM"]),
             ("원전 SMR", 71.0, 75, 60, 70, 65, ["SMR", "CCJ"]),
