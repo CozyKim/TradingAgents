@@ -10,11 +10,22 @@ empty/zeroed signals rather than raising — a trending scan must never crash.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import os
 from collections.abc import Callable
 from datetime import date
 from typing import Any
+
+from tradingagents_web.schemas.trending import TrendingSector, TrendingSignals
+from tradingagents_web.services.event_bus import AnalysisEvent, EventBus
+from tradingagents_web.services.trending_score import (
+    momentum_score,
+    sentiment_score,
+    volume_score,
+    weighted_hotness,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -101,3 +112,239 @@ def search_recent(
         }
         for r in raw.get("results", [])
     ]
+
+
+# ---------------------------------------------------------------------------
+# Pipeline helpers
+# ---------------------------------------------------------------------------
+
+# How many top themes to return.
+_TOP_N = 6
+
+
+def _progress(bus: EventBus, job_id: str, stage: str, **extra: Any) -> None:
+    bus.publish(job_id, AnalysisEvent(type="progress", data={"stage": stage, **extra}))
+
+
+def _build_discover_prompt(today: date, snippets: list[dict]) -> str:
+    """Prompt the LLM to extract 5~8 fresh themes as strict JSON.
+
+    Args:
+        today: Anchor date, surfaced to the model so it can exclude stale items.
+        snippets: Recency-filtered search hits to ground the extraction.
+
+    Returns:
+        A prompt string instructing the model to answer with strict JSON only.
+    """
+    lines = [f"- [{s.get('published_date','?')}] {s['title']}: {s['snippet']}" for s in snippets]
+    corpus = "\n".join(lines) if lines else "(검색 결과 없음)"
+    return (
+        f"오늘 날짜: {today.isoformat()}.\n"
+        "아래는 최근 웹/뉴스 검색 결과다. 지금 시장에서 '핫한' 신규 투자 테마를 "
+        "5~8개 발굴하라. 수개월 지난 오래된 테마/뉴스는 제외한다.\n\n"
+        f"{corpus}\n\n"
+        "다음 JSON 스키마로만 답하라(코드블록·설명 금지):\n"
+        '{"themes":[{"name":"한글 테마명","description":"한 줄 설명",'
+        '"keywords":["k1","k2"],"tickers":["TICK1","TICK2"],"web_trend":0-100}]}'
+    )
+
+
+def _parse_themes(raw: str) -> list[dict]:
+    """Parse the LLM JSON; tolerate accidental code fences.
+
+    Args:
+        raw: The model's raw text response.
+
+    Returns:
+        The list under the ``themes`` key, or [] if absent/not a list.
+    """
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        text = text[text.find("{") : text.rfind("}") + 1]
+    data = json.loads(text)
+    themes = data.get("themes", [])
+    return themes if isinstance(themes, list) else []
+
+
+def _rationale(web_trend: float, vol: float, sent: float, mom: float) -> str:
+    """One-line Korean explanation highlighting the strongest signals.
+
+    Args:
+        web_trend: Web-trend score 0~100.
+        vol: Community-volume score 0~100.
+        sent: Sentiment score 0~100.
+        mom: Momentum score 0~100.
+
+    Returns:
+        A short Korean phrase naming the signals above 60, or a neutral note.
+    """
+    parts = []
+    if web_trend >= 60:
+        parts.append("웹·뉴스에서 화제성↑")
+    if vol >= 60:
+        parts.append("커뮤니티 언급량 많음")
+    if sent >= 60:
+        parts.append("상승 감성 우세")
+    if mom >= 60:
+        parts.append("가격·거래량 모멘텀 양호")
+    return ", ".join(parts) if parts else "신호가 고르게 분포"
+
+
+# ---------------------------------------------------------------------------
+# Main finder classes
+# ---------------------------------------------------------------------------
+
+
+class TrendingSectorFinder:
+    """Discovers hot themes from recency-filtered search + per-ticker signals.
+
+    Args:
+        bus: EventBus to publish stage-progress events to.
+        llm_json: Callable(prompt:str)->str returning the model's raw text.
+        search_fn: Callable(query, *, days, client_search=None)->list[dict].
+        social_fn: Callable(ticker)->{"bullish","bearish","total_messages"}.
+        momentum_fn: Callable(ticker)->{"avg_return_pct": float}.
+        today: Anchor date for recency (injected for tests).
+    """
+
+    def __init__(
+        self,
+        bus: EventBus,
+        *,
+        llm_json: Callable[[str], str],
+        search_fn: Callable[..., list[dict]],
+        social_fn: Callable[[str], dict],
+        momentum_fn: Callable[[str], dict],
+        today: date,
+    ) -> None:
+        self.bus = bus
+        self.llm_json = llm_json
+        self.search_fn = search_fn
+        self.social_fn = social_fn
+        self.momentum_fn = momentum_fn
+        self.today = today
+
+    async def find(self, job_id: str) -> list[TrendingSector]:
+        """Run the 4-stage pipeline, emitting progress; never raises.
+
+        Args:
+            job_id: EventBus run-id to publish progress under.
+
+        Returns:
+            Up to _TOP_N themes sorted by hotness descending.
+        """
+        # 1) discover
+        _progress(self.bus, job_id, "discover", message="웹 검색 중…")
+        snippets: list[dict] = []
+        for query in build_seed_queries(self.today)[:_MAX_SEARCHES]:
+            snippets.extend(
+                await asyncio.to_thread(self.search_fn, query, days=_SEARCH_DAYS)
+            )
+        themes = await self._extract_themes(snippets)
+
+        # 2) enrich
+        enriched: list[TrendingSector] = []
+        for i, theme in enumerate(themes, start=1):
+            _progress(self.bus, job_id, "enrich", progress=f"{i}/{len(themes)}")
+            enriched.append(await asyncio.to_thread(self._score_theme, theme))
+
+        # 3) score (already computed per theme) + 4) rank
+        _progress(self.bus, job_id, "score", message="점수 계산 중…")
+        enriched.sort(key=lambda s: s.hotness_score, reverse=True)
+        ranked = enriched[:_TOP_N]
+        _progress(self.bus, job_id, "rank", count=len(ranked))
+        return ranked
+
+    async def _extract_themes(self, snippets: list[dict]) -> list[dict]:
+        prompt = _build_discover_prompt(self.today, snippets)
+        for attempt in range(2):  # 1 retry on parse failure
+            try:
+                raw = await asyncio.to_thread(self.llm_json, prompt)
+                return _parse_themes(raw)
+            except Exception:  # noqa: BLE001
+                logger.warning("theme JSON parse failed (attempt %d)", attempt + 1)
+        return []
+
+    def _score_theme(self, theme: dict) -> TrendingSector:
+        tickers = [t for t in (theme.get("tickers") or []) if t][:3]
+        bullish = bearish = total_msgs = 0
+        returns: list[float] = []
+        for tk in tickers:
+            try:
+                soc = self.social_fn(tk)
+                bullish += int(soc.get("bullish", 0))
+                bearish += int(soc.get("bearish", 0))
+                total_msgs += int(soc.get("total_messages", 0))
+            except Exception:  # noqa: BLE001 — degrade to zero
+                logger.debug("social_fn failed for %s", tk)
+            try:
+                returns.append(float(self.momentum_fn(tk).get("avg_return_pct", 0.0)))
+            except Exception:  # noqa: BLE001
+                logger.debug("momentum_fn failed for %s", tk)
+
+        web_trend = max(0.0, min(100.0, float(theme.get("web_trend", 0))))
+        vol = volume_score(total_msgs)
+        sent = sentiment_score(bullish, bearish)
+        mom = momentum_score(sum(returns) / len(returns) if returns else 0.0)
+        hotness = weighted_hotness(
+            web_trend=web_trend, community_volume=vol, sentiment=sent, momentum=mom
+        )
+        return TrendingSector(
+            name=str(theme.get("name", "(이름 없음)")),
+            description=str(theme.get("description", "")),
+            keywords=[str(k) for k in (theme.get("keywords") or [])],
+            tickers=tickers,
+            hotness_score=round(hotness, 1),
+            signals=TrendingSignals(
+                web_trend=round(web_trend, 1),
+                community_volume=round(vol, 1),
+                sentiment=round(sent, 1),
+                momentum=round(mom, 1),
+            ),
+            rationale=_rationale(web_trend, vol, sent, mom),
+        )
+
+
+class FakeTrendingFinder:
+    """Token-free finder for WEB_FAKE_RUNNER / E2E. Emits same stage events.
+
+    Args:
+        bus: EventBus to publish stage-progress events to.
+    """
+
+    def __init__(self, bus: EventBus) -> None:
+        self.bus = bus
+
+    async def find(self, job_id: str) -> list[TrendingSector]:
+        """Emit the four stage events then return deterministic dummy themes.
+
+        Args:
+            job_id: EventBus run-id to publish progress under.
+
+        Returns:
+            Three dummy themes sorted by hotness descending.
+        """
+        for stage in ("discover", "enrich", "score", "rank"):
+            _progress(self.bus, job_id, stage, message=f"{stage}…")
+            await asyncio.sleep(0.01)
+        dummy = [
+            ("온디바이스 AI", 82.0, 80, 75, 85, 70, ["AAPL", "QCOM"]),
+            ("원전 SMR", 71.0, 75, 60, 70, 65, ["SMR", "CCJ"]),
+            ("우주 발사체", 64.0, 70, 55, 60, 55, ["RKLB", "ASTR"]),
+        ]
+        out = [
+            TrendingSector(
+                name=n,
+                description=f"{n} 관련 테마(더미)",
+                keywords=[n],
+                tickers=tks,
+                hotness_score=score,
+                signals=TrendingSignals(
+                    web_trend=wt, community_volume=cv, sentiment=se, momentum=mo
+                ),
+                rationale="WEB_FAKE_RUNNER 더미 결과",
+            )
+            for (n, score, wt, cv, se, mo, tks) in dummy
+        ]
+        return out
