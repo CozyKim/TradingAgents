@@ -151,3 +151,74 @@ export async function getActiveRun(sectorId: number): Promise<SectorRun | null> 
   if (!r.ok) throw new Error(`getActiveRun ${r.status}`);
   return r.json();
 }
+
+export interface TrendingSignals {
+  web_trend: number;
+  community_volume: number;
+  sentiment: number;
+  momentum: number;
+}
+
+export interface TrendingSector {
+  name: string;
+  description: string;
+  keywords: string[];
+  tickers: string[];
+  hotness_score: number;
+  signals: TrendingSignals;
+  rationale: string;
+}
+
+export async function startTrendingScan(): Promise<{ job_id: string }> {
+  const r = await fetch("/api/sectors/trending", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...XHR_HEADERS },
+    credentials: "include",
+  });
+  if (!r.ok) {
+    const detail = await r.text();
+    throw new Error(`startTrendingScan ${r.status}: ${detail}`);
+  }
+  return r.json();
+}
+
+export type TrendingStreamHandlers = {
+  onProgress?: (data: { stage?: string; message?: string; progress?: string }) => void;
+  onDone?: (sectors: TrendingSector[]) => void;
+  onError?: (message: string) => void;
+};
+
+/** Subscribe to a trending scan's SSE stream. Returns a cancel function. */
+export function openTrendingStream(
+  jobId: string,
+  handlers: TrendingStreamHandlers,
+): () => void {
+  const es = new EventSource(
+    `/api/sectors/trending/${encodeURIComponent(jobId)}/stream`,
+    { withCredentials: true },
+  );
+  es.addEventListener("progress", (raw) => {
+    try {
+      handlers.onProgress?.(JSON.parse((raw as MessageEvent).data));
+    } catch {
+      /* ignore */
+    }
+  });
+  es.addEventListener("done", (raw) => {
+    try {
+      const data = JSON.parse((raw as MessageEvent).data);
+      handlers.onDone?.(data.sectors ?? []);
+    } catch {
+      handlers.onDone?.([]);
+    }
+  });
+  es.addEventListener("error", (raw) => {
+    try {
+      handlers.onError?.(JSON.parse((raw as MessageEvent).data).message ?? "오류");
+    } catch {
+      /* EventSource connection error event has no JSON body */
+    }
+  });
+  es.addEventListener("close", () => es.close());
+  return () => es.close();
+}
