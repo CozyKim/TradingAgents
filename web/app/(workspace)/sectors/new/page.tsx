@@ -125,6 +125,7 @@ export default function NewSectorPage() {
           <div className="mt-3 flex items-center gap-2">
             <label className="text-xs text-text-3">버전</label>
             <select
+              aria-label="스캔 버전 선택"
               value={activeScanId ?? ""}
               onChange={(e) => setSelectedScanId(Number(e.target.value))}
               className="rounded-md border border-border-1 bg-bg-1 px-2 py-1 text-xs text-text-1"
