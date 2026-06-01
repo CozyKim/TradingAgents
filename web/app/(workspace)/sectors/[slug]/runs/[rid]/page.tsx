@@ -39,6 +39,10 @@ export default function SectorRunPage() {
       await cancelSectorRun(sectorId, rid);
     } catch {
       // The stream's cancelled / stall handling still updates the UI.
+    } finally {
+      // Re-enable the button if the request failed; on success the run flips
+      // to "cancelled" and this control unmounts anyway.
+      setCancelling(false);
     }
   }
 

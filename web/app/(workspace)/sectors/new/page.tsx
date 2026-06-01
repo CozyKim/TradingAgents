@@ -96,19 +96,30 @@ export default function NewSectorPage() {
     }
   }
 
-  async function onCancelScan() {
+  function teardownScan() {
     cancelStreamRef.current?.();
-    const jobId = jobIdRef.current;
-    if (jobId) {
-      try {
-        await cancelTrendingScan(jobId);
-      } catch {
-        // 화면은 이미 정리한다.
-      }
-    }
     setScanning(false);
     setScanStage("");
     setScanStalled(false);
+  }
+
+  async function onCancelScan() {
+    const jobId = jobIdRef.current;
+    if (!jobId) {
+      // 서버측 잡이 아직 없으면 화면만 정리한다.
+      teardownScan();
+      return;
+    }
+    try {
+      await cancelTrendingScan(jobId);
+    } catch (err) {
+      // 백엔드 취소가 실패하면 스트림/진행 상태를 그대로 둬 잡을 방치하지 않고,
+      // 오류를 노출해 재시도할 수 있게 한다.
+      setScanError(err instanceof Error ? err.message : "취소 실패");
+      return;
+    }
+    // 취소 수락됨(`cancelled` SSE 이벤트도 곧 도착). 화면을 정리한다.
+    teardownScan();
   }
 
   useEffect(() => () => cancelStreamRef.current?.(), []);
