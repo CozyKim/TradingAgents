@@ -113,7 +113,7 @@ def set_background_session_factory(factory: Callable[[], OrmSession]) -> None:
 
 
 def mark_orphan_runs_failed(
-    session_factory: Callable[[], OrmSession] = None,
+    session_factory: Callable[[], OrmSession] | None = None,
 ) -> int:
     """Mark any lingering 'running' sector_runs as failed.
 
