@@ -1,6 +1,11 @@
 """Tests for /api/sectors CRUD endpoints."""
 
+import asyncio
 from datetime import datetime, timezone
+
+import pytest
+
+from tradingagents_web.services.event_bus import EventBus
 
 # All mutating endpoints require the same CSRF marker every other API uses.
 XHR_HEADERS = {"X-Requested-With": "fetch"}
@@ -308,13 +313,6 @@ def test_report_for_wrong_sector_returns_404(auth_client, app_with_test_db):
 # ---------------------------------------------------------------------------
 # Heartbeat pump
 # ---------------------------------------------------------------------------
-import asyncio
-
-import pytest
-
-from tradingagents_web.services.event_bus import EventBus
-
-
 @pytest.mark.asyncio
 async def test_heartbeat_pump_emits_until_stopped():
     from tradingagents_web.api.sectors import _heartbeat_pump
@@ -328,6 +326,7 @@ async def test_heartbeat_pump_emits_until_stopped():
         )
         for _ in range(2):
             ev = await asyncio.wait_for(queue.get(), 0.5)
+            assert ev is not None  # first events are heartbeats, not the sentinel
             received.append(ev.type)
         stop.set()
         await pump
