@@ -464,3 +464,22 @@ def test_cancel_sector_run_csrf_rejected(auth_client, app_with_test_db):
     sid = _make_running_run(TestSessionLocal, "csrfsec", "run-csrf")
     resp = auth_client.delete(f"/api/sectors/{sid}/runs/run-csrf")  # no XHR header
     assert resp.status_code == 403
+
+
+def test_cancel_trending_scan_publishes_cancelled(auth_client):
+    from tradingagents_web.services.event_bus import get_event_bus
+
+    bus = get_event_bus()
+    job_id = "trend-cancel-job"
+    resp = auth_client.delete(
+        f"/api/sectors/trending/{job_id}", headers=XHR_HEADERS
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"ok": True}
+    assert bus.is_finished(job_id)
+    assert "cancelled" in [e.type for e in bus.history(job_id)]
+
+
+def test_cancel_trending_scan_csrf_rejected(auth_client):
+    resp = auth_client.delete("/api/sectors/trending/any-job")  # no XHR header
+    assert resp.status_code == 403

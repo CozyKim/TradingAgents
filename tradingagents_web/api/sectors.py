@@ -290,40 +290,60 @@ async def start_trending_scan(
     job_id = str(uuid.uuid4())
     task = asyncio.create_task(_execute_trending_scan(finder, job_id))
     _BACKGROUND_TASKS.add(task)
-    task.add_done_callback(_BACKGROUND_TASKS.discard)
+    _TRENDING_TASKS[job_id] = task
+
+    def _cleanup(t: asyncio.Task, jid: str = job_id) -> None:
+        _BACKGROUND_TASKS.discard(t)
+        _TRENDING_TASKS.pop(jid, None)
+
+    task.add_done_callback(_cleanup)
     return TrendingScanOut(job_id=job_id)
 
 
 async def _execute_trending_scan(finder, job_id: str) -> None:
     """Background driver: run finder, persist (if any), publish done + finish.
 
+    Publishes liveness heartbeats throughout. A hard cancel (task.cancel())
+    raises CancelledError, which bypasses the broad ``except Exception`` and
+    drops into ``finally`` where the (already-finished) bus is a no-op.
+
     Args:
         finder: A TrendingSectorFinder or FakeTrendingFinder instance.
         job_id: EventBus run-id to publish events under.
     """
     bus = get_event_bus()
+    stop = asyncio.Event()
+    pump = asyncio.create_task(_heartbeat_pump(bus, job_id, stop))
     try:
         sectors = await finder.find(job_id)
         payload: dict = {"sectors": [s.model_dump() for s in sectors]}
         if sectors:
-            # Persist BEFORE done so an SSE consumer reacting to `done` (and the
-            # scan_id) always finds the row already committed.
             db = _session_factory()
             try:
                 scan = TrendingScan(sectors=payload["sectors"])
                 db.add(scan)
                 db.commit()
                 db.refresh(scan)
-                scan_id = scan.id  # capture before close
-                payload["scan_id"] = scan_id
+                payload["scan_id"] = scan.id
             finally:
                 db.close()
-        bus.publish(job_id, AnalysisEvent(type="done", data=payload))
+        if not bus.is_finished(job_id):
+            bus.publish(job_id, AnalysisEvent(type="done", data=payload))
     except Exception as exc:  # noqa: BLE001
         logger.exception("trending scan %s failed", job_id)
-        bus.publish(job_id, AnalysisEvent(type="error", data={"message": str(exc)}))
+        if not bus.is_finished(job_id):
+            bus.publish(
+                job_id, AnalysisEvent(type="error", data={"message": str(exc)})
+            )
     finally:
-        bus.finish(job_id)
+        stop.set()
+        pump.cancel()
+        try:
+            await pump
+        except asyncio.CancelledError:
+            pass
+        if not bus.is_finished(job_id):
+            bus.finish(job_id)
 
 
 @router.get("/trending/scans", response_model=list[TrendingScanSummary])
@@ -358,6 +378,37 @@ async def get_trending_scan(
     return TrendingScanDetail(
         id=row.id, created_at=row.created_at, sectors=row.sectors or []
     )
+
+
+@router.delete("/trending/{job_id}")
+async def cancel_trending_scan(
+    job_id: str,
+    _user: Annotated[User, Depends(get_current_user)],
+    _csrf: Annotated[None, Depends(require_xhr)] = None,
+) -> dict[str, bool]:
+    """Cancel an in-flight trending scan.
+
+    Trending scans are purely in-memory (no DB row), so cancellation publishes
+    a ``cancelled`` event, closes the SSE stream, and hard-cancels the
+    background task. Idempotent: cancelling an unknown/finished job is a no-op
+    that still returns ``{"ok": True}``.
+
+    Args:
+        job_id: The scan job UUID to cancel.
+        _user: Authenticated user (injected).
+        _csrf: XHR header CSRF guard (injected).
+
+    Returns:
+        ``{"ok": True}``.
+    """
+    bus = get_event_bus()
+    if not bus.is_finished(job_id):
+        bus.publish(job_id, AnalysisEvent(type="cancelled", data={}))
+        bus.finish(job_id)
+    task = _TRENDING_TASKS.get(job_id)
+    if task is not None and not task.done():
+        task.cancel()
+    return {"ok": True}
 
 
 @router.get("/trending/{job_id}/stream")
