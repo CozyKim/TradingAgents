@@ -112,6 +112,42 @@ def set_background_session_factory(factory: Callable[[], OrmSession]) -> None:
     _session_factory = factory
 
 
+def mark_orphan_runs_failed(
+    session_factory: Callable[[], OrmSession] = None,
+) -> int:
+    """Mark any lingering 'running' sector_runs as failed.
+
+    Called once at app startup. After a process restart the in-memory asyncio
+    tasks driving these runs are gone, so the rows are orphaned — without this
+    sweep the detail page polls runs/active forever and shows a phantom
+    "분석 진행 중".
+
+    Args:
+        session_factory: Zero-arg callable returning a new ORM session.
+            Defaults to the module-level factory (overridable in tests).
+
+    Returns:
+        Number of rows updated.
+    """
+    factory = session_factory or _session_factory
+    db = factory()
+    try:
+        rows = (
+            db.execute(select(SectorRun).where(SectorRun.status == "running"))
+            .scalars()
+            .all()
+        )
+        now = datetime.now(timezone.utc)
+        for row in rows:
+            row.status = "failed"
+            row.error = "서버 재시작으로 분석이 중단되었습니다."
+            row.finished_at = now
+        db.commit()
+        return len(rows)
+    finally:
+        db.close()
+
+
 class SectorRunnerNotConfigured(RuntimeError):
     """Production LLM wiring is not yet available for the requested provider.
 

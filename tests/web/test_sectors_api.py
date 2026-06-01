@@ -333,3 +333,45 @@ async def test_heartbeat_pump_emits_until_stopped():
         await pump
     assert received == ["heartbeat", "heartbeat"]
     assert bus.history("pump-run") == []  # buffer=False
+
+
+def test_mark_orphan_runs_failed(app_with_test_db):
+    from tradingagents_web.api.sectors import mark_orphan_runs_failed
+    from tradingagents_web.models import Sector, SectorRun
+
+    _, TestSessionLocal = app_with_test_db
+    db = TestSessionLocal()
+    try:
+        sector = Sector(
+            slug="orphan", name="Orphan", keywords=[],
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(sector)
+        db.commit()
+        sid = sector.id
+        db.add(SectorRun(
+            id="orphan-run", sector_id=sid, status="running",
+            started_at=datetime.now(timezone.utc),
+        ))
+        db.add(SectorRun(
+            id="done-run", sector_id=sid, status="completed",
+            started_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    n = mark_orphan_runs_failed(TestSessionLocal)
+    assert n == 1
+
+    db = TestSessionLocal()
+    try:
+        orphan = db.get(SectorRun, "orphan-run")
+        done = db.get(SectorRun, "done-run")
+        assert orphan.status == "failed"
+        assert "재시작" in (orphan.error or "")
+        assert orphan.finished_at is not None
+        assert done.status == "completed"  # 건드리지 않음
+    finally:
+        db.close()

@@ -82,6 +82,8 @@ def _build_lifespan(settings: Settings):
             svc.bootstrap(db)
         finally:
             db.close()
+        # 재시작으로 끊긴 고아 'running' 섹터 run을 정리해 유령 진행 표시 방지.
+        sectors_api.mark_orphan_runs_failed(SessionLocal)
         try:
             yield
         finally:
