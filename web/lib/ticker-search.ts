@@ -103,6 +103,9 @@ export type CommitResult =
   | { status: "invalid"; reason: "english_pattern" | "korean_no_match" | "mixed" };
 
 const TICKER_PATTERN = /^[A-Z][A-Z0-9.\-]{0,15}$/;
+// Korea Exchange tickers are 6 digits + a market suffix (KOSPI .KS / KOSDAQ .KQ)
+// and start with a digit, so they don't fit the english-leading TICKER_PATTERN.
+const KRX_TICKER_PATTERN = /^\d{6}\.(KS|KQ)$/;
 const HANGUL_RE = /[ㄱ-ㆎ가-힣]/;
 
 export function commitInput(raw: string, options: SearchOptions = {}): CommitResult {
@@ -189,7 +192,7 @@ export function commitInput(raw: string, options: SearchOptions = {}): CommitRes
     return { status: "invalid", reason: "english_pattern" };
   }
 
-  if (TICKER_PATTERN.test(upper)) {
+  if (TICKER_PATTERN.test(upper) || KRX_TICKER_PATTERN.test(upper)) {
     return { status: "ok", ticker: upper };
   }
   return { status: "invalid", reason: "english_pattern" };

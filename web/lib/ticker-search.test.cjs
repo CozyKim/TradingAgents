@@ -125,6 +125,14 @@ test("commitInput: dot/hyphen tickers accepted", () => {
   assert.deepEqual(commitInput("BF-B", { seed: SEED }), { status: "ok", ticker: "BF-B" });
 });
 
+test("commitInput: Korean KRX tickers accepted", () => {
+  const { commitInput } = loadTsModule("ticker-search.ts");
+  // KOSPI (.KS) / KOSDAQ (.KQ) codes are 6 digits + suffix and start with a
+  // digit, so they must bypass the english-only first-char rule.
+  assert.deepEqual(commitInput("005930.KS", { seed: SEED }), { status: "ok", ticker: "005930.KS" });
+  assert.deepEqual(commitInput("035720.kq", { seed: SEED }), { status: "ok", ticker: "035720.KQ" });
+});
+
 test("commitInput: korean exact alias auto-resolves to ticker", () => {
   const { commitInput } = loadTsModule("ticker-search.ts");
   assert.deepEqual(commitInput("알파벳A", { seed: SEED }), { status: "ok", ticker: "GOOGL" });

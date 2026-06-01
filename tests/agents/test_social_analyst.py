@@ -59,7 +59,7 @@ class SocialAnalystWiringTests(unittest.TestCase):
 
         src = inspect.getsource(mod)
         self.assertIn("get_social_sentiment(ticker, start_date, end_date)", src)
-        self.assertIn("get_social_messages(ticker, limit)", src)
+        self.assertIn("get_social_messages(ticker, limit, sort, days)", src)
         self.assertIn("bare ticker symbol", src)
 
 
