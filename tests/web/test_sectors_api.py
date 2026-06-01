@@ -303,3 +303,33 @@ def test_report_for_wrong_sector_returns_404(auth_client, app_with_test_db):
         f"/api/sectors/{wrong_sector_id}/reports/{report_id}"
     )
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Heartbeat pump
+# ---------------------------------------------------------------------------
+import asyncio
+
+import pytest
+
+from tradingagents_web.services.event_bus import EventBus
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_pump_emits_until_stopped():
+    from tradingagents_web.api.sectors import _heartbeat_pump
+
+    bus = EventBus()
+    stop = asyncio.Event()
+    received: list[str] = []
+    async with bus.subscribe("pump-run") as queue:
+        pump = asyncio.create_task(
+            _heartbeat_pump(bus, "pump-run", stop, interval=0.01)
+        )
+        for _ in range(2):
+            ev = await asyncio.wait_for(queue.get(), 0.5)
+            received.append(ev.type)
+        stop.set()
+        await pump
+    assert received == ["heartbeat", "heartbeat"]
+    assert bus.history("pump-run") == []  # buffer=False

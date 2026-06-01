@@ -65,6 +65,42 @@ _session_factory: Callable[[], OrmSession] = SessionLocal
 # Strong references to background tasks so the GC doesn't collect them.
 _BACKGROUND_TASKS: set[asyncio.Task] = set()
 
+# Heartbeat cadence. The run task publishes a liveness ping at this interval
+# so the client can distinguish "still working" from "stalled / disconnected".
+_HEARTBEAT_INTERVAL_S: float = 8.0
+
+# run_id / job_id → background task, so the cancel endpoints can hard-cancel
+# the in-flight asyncio task (stops LLM/search work, saving cost).
+_RUN_TASKS: dict[str, asyncio.Task] = {}
+_TRENDING_TASKS: dict[str, asyncio.Task] = {}
+
+
+async def _heartbeat_pump(
+    bus: EventBus,
+    run_id: str,
+    stop: asyncio.Event,
+    interval: float = _HEARTBEAT_INTERVAL_S,
+) -> None:
+    """Publish a liveness heartbeat every ``interval`` seconds until stopped.
+
+    Heartbeats use ``buffer=False`` so they never enter EventBus history — a
+    re-subscribing client must not replay stale heartbeats (which would falsely
+    reset its stall timer).
+
+    Args:
+        bus: The shared EventBus.
+        run_id: Run/job id to publish heartbeats under.
+        stop: Event the caller sets to terminate the pump.
+        interval: Seconds between heartbeats.
+    """
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=interval)
+        except asyncio.TimeoutError:
+            bus.publish(
+                run_id, AnalysisEvent(type="heartbeat", data={}), buffer=False
+            )
+
 
 def set_background_session_factory(factory: Callable[[], OrmSession]) -> None:
     """Override the SessionLocal used by background tasks (tests use this).
