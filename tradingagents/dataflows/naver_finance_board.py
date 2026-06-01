@@ -109,7 +109,7 @@ def _parse_messages_page(html: str) -> list[tuple[str, str, int, int]]:
 def get_social_messages_naver(
     ticker: str,
     limit: int = _DEFAULT_MAX_ITEMS,
-    sort: str = "latest",
+    sort: str | None = None,
     days: int | None = None,
     max_pages: int = 5,
 ) -> str:
@@ -122,8 +122,12 @@ def get_social_messages_naver(
     Args:
         ticker: Korean ticker, e.g. ``"005930.KS"`` or ``"035720.KQ"``.
         limit: Maximum posts to render (default 30). Clamped to [1, 50].
-        sort: ``"latest"`` (default, newest first) or ``"views"`` (most-viewed
-            first within the scanned/​windowed set).
+        sort: ``"views"`` (default — most-viewed first within the scanned/​
+            windowed set) or ``"latest"`` (newest first). 종목토론방 is a Korean
+            retail board, so 조회순 is the meaningful default: only an exact,
+            case-insensitive ``"latest"`` opts out; every other value — ``None``,
+            ``"views"``, casing/spacing variants, 한국어/synonyms — is coerced to
+            ``"views"`` so a mistyped sort never silently degrades to newest-first.
         days: When set, keep only posts within the last ``days`` days, anchored
             to the newest post seen (the board is near-real-time, so this is
             effectively "last N days"). ``None`` (default) applies no window.
@@ -142,6 +146,12 @@ def get_social_messages_naver(
             f"{ticker} is not a Korean ticker (.KS/.KQ); "
             "Naver 종목토론방 messages are unavailable."
         )
+
+    # 조회순 is the meaningful default for this Korean retail board. Coerce
+    # anything that is not an exact, case-insensitive 'latest' — None, 'views',
+    # casing/spacing variants, 한국어/synonyms — to 'views' so a mistyped sort
+    # never silently falls back to newest-first ("조회수 우선인데 최신순" bug).
+    sort = "latest" if str(sort).strip().lower() == "latest" else "views"
 
     capped = max(1, min(int(limit), 50))
     pages = max(1, min(int(max_pages), _MAX_PAGES))

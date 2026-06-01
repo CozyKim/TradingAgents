@@ -76,13 +76,14 @@ class GetSocialMessagesNaverTests(unittest.TestCase):
         self.assertIn("9", result)  # agree count surfaced
 
     @patch("tradingagents.dataflows.naver_finance_board.requests.get")
-    def test_default_sort_is_latest(self, mock_get):
+    def test_default_sort_is_views(self, mock_get):
+        # 종목토론방 is a Korean retail board — the default/forced sort is 조회순.
         mock_get.return_value = _mock_response(200, self._BOARD)
         result = nfb.get_social_messages_naver("005930.KS", limit=10)
-        # Board order (newest first) preserved: 12:34 before 09:10.
+        # No sort given → most-viewed first: 200-view post before 50-view post.
         self.assertLess(
-            result.index("삼성전자 신고가 가즈아"),
             result.index("실적 어닝 서프라이즈 기대"),
+            result.index("삼성전자 신고가 가즈아"),
         )
 
     @patch("tradingagents.dataflows.naver_finance_board.requests.get")
@@ -94,6 +95,31 @@ class GetSocialMessagesNaverTests(unittest.TestCase):
             result.index("실적 어닝 서프라이즈 기대"),
             result.index("삼성전자 신고가 가즈아"),
         )
+
+    @patch("tradingagents.dataflows.naver_finance_board.requests.get")
+    def test_explicit_latest_keeps_board_order(self, mock_get):
+        # Only an explicit 'latest' opts out of 조회순 → board (newest-first) order.
+        mock_get.return_value = _mock_response(200, self._BOARD)
+        result = nfb.get_social_messages_naver("005930.KS", limit=10, sort="latest")
+        self.assertLess(
+            result.index("삼성전자 신고가 가즈아"),
+            result.index("실적 어닝 서프라이즈 기대"),
+        )
+
+    @patch("tradingagents.dataflows.naver_finance_board.requests.get")
+    def test_non_latest_sort_values_coerce_to_views(self, mock_get):
+        # Anything that is not exactly 'latest' (typos, 한국어, casing, spacing)
+        # falls back to 조회순 instead of silently rendering newest-first — this
+        # is the "조회수 우선이랬는데 최신순" bug guard.
+        mock_get.return_value = _mock_response(200, self._BOARD)
+        for value in ("Views", " views ", "조회순", "popular", "by_views"):
+            result = nfb.get_social_messages_naver("005930.KS", limit=10, sort=value)
+            self.assertLess(
+                result.index("실적 어닝 서프라이즈 기대"),
+                result.index("삼성전자 신고가 가즈아"),
+                msg=f"sort={value!r} should sort by view count",
+            )
+            self.assertIn("by view count", result)
 
     @patch("tradingagents.dataflows.naver_finance_board.requests.get")
     def test_limit_caps_message_count(self, mock_get):
