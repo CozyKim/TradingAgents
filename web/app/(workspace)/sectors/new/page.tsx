@@ -32,6 +32,10 @@ export default function NewSectorPage() {
   const cancelStreamRef = useRef<(() => void) | null>(null);
   const jobIdRef = useRef<string | null>(null);
   const lastSignalRef = useRef<number>(0);
+  // Bumped on every scan start AND every cancel, so an in-flight
+  // startTrendingScan() whose await resolves after a cancel can tell it was
+  // superseded and avoid opening a stream / leaving the job running.
+  const scanGenRef = useRef(0);
 
   // Saved scan versions (newest first). Drives the version selector + restore.
   const scans = useQuery({
@@ -52,12 +56,19 @@ export default function NewSectorPage() {
 
   async function onScan() {
     cancelStreamRef.current?.();
+    const gen = ++scanGenRef.current;
     setScanning(true);
     setScanError(null);
     setScanStalled(false);
     lastSignalRef.current = Date.now();
     try {
       const { job_id } = await startTrendingScan();
+      if (scanGenRef.current !== gen) {
+        // A cancel (or a newer scan) fired while this request was in flight —
+        // cancel the just-started job server-side and don't open a stream.
+        cancelTrendingScan(job_id).catch(() => {});
+        return;
+      }
       jobIdRef.current = job_id;
       cancelStreamRef.current = openTrendingStream(job_id, {
         onProgress: (d) => {
@@ -91,6 +102,7 @@ export default function NewSectorPage() {
         },
       });
     } catch (err) {
+      if (scanGenRef.current !== gen) return; // superseded — ignore
       setScanError(err instanceof Error ? err.message : "추천 실패");
       setScanning(false);
     }
@@ -104,6 +116,9 @@ export default function NewSectorPage() {
   }
 
   async function onCancelScan() {
+    // Invalidate any in-flight onScan() so its resolved job gets auto-cancelled
+    // instead of opening a stream after the user already cancelled.
+    scanGenRef.current++;
     const jobId = jobIdRef.current;
     if (!jobId) {
       // 서버측 잡이 아직 없으면 화면만 정리한다.

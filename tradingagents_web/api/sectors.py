@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as OrmSession
 from sse_starlette.sse import EventSourceResponse
@@ -695,11 +695,29 @@ async def _execute_sector_run(request: SectorRunRequest) -> None:
                 created_at=datetime.now(timezone.utc),
             )
         )
-        if row is not None:
-            row.status = "completed"
-            row.phase = "outlook"
-            row.finished_at = datetime.now(timezone.utc)
-            row.search_call_count = result.search_call_count
+        # Flip to "completed" ONLY while still "running". asyncio already
+        # serializes this synchronous block against cancel_sector_run (there is
+        # no await between the cancelled-check above and this commit, so the
+        # cancel handler cannot interleave here), but the guarded UPDATE makes
+        # "cancel always wins" an explicit, future-proof invariant: if a cancel
+        # did land first, rowcount is 0 and we discard the report rather than
+        # clobber the cancelled status.
+        completed = db.execute(
+            update(SectorRun)
+            .where(SectorRun.id == request.run_id)
+            .where(SectorRun.status == "running")
+            .values(
+                status="completed",
+                phase="outlook",
+                finished_at=datetime.now(timezone.utc),
+                search_call_count=result.search_call_count,
+            )
+        )
+        if completed.rowcount == 0:
+            db.rollback()
+            if not bus.is_finished(request.run_id):
+                bus.finish(request.run_id)
+            return
         db.commit()
 
         bus.publish(

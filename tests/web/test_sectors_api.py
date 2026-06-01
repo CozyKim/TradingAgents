@@ -483,3 +483,106 @@ def test_cancel_trending_scan_publishes_cancelled(auth_client):
 def test_cancel_trending_scan_csrf_rejected(auth_client):
     resp = auth_client.delete("/api/sectors/trending/any-job")  # no XHR header
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_execute_sector_run_completes_and_persists(
+    app_with_test_db, monkeypatch
+):
+    """Happy path: the guarded completion UPDATE still writes the report and
+    flips status to completed when nothing cancels the run."""
+    monkeypatch.setenv("WEB_FAKE_RUNNER", "true")
+    from datetime import date
+
+    from sqlalchemy import select as _select
+
+    from tradingagents_web.api import sectors as sectors_api
+    from tradingagents_web.models import Sector, SectorReport, SectorRun
+    from tradingagents_web.services.sector_fake_runner import SectorRunRequest
+
+    _, TestSessionLocal = app_with_test_db
+    db = TestSessionLocal()
+    try:
+        sector = Sector(
+            slug="execdone", name="ExecDone", keywords=[],
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(sector)
+        db.commit()
+        sid = sector.id
+        db.add(SectorRun(
+            id="exec-done", sector_id=sid, status="running",
+            started_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    await sectors_api._execute_sector_run(SectorRunRequest(
+        run_id="exec-done", sector_id=sid, sector_slug="execdone",
+        sector_name="ExecDone", keywords=[], analysis_date=date(2026, 6, 2),
+    ))
+
+    db = TestSessionLocal()
+    try:
+        run = db.get(SectorRun, "exec-done")
+        assert run.status == "completed"
+        assert run.phase == "outlook"
+        rep = db.execute(
+            _select(SectorReport).where(SectorReport.run_id == "exec-done")
+        ).scalar_one_or_none()
+        assert rep is not None
+        assert rep.version == 1
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_execute_sector_run_discards_result_when_cancelled(
+    app_with_test_db, monkeypatch
+):
+    """If the row was cancelled before the runner finished, the result is
+    discarded: no report is written and the status stays cancelled."""
+    monkeypatch.setenv("WEB_FAKE_RUNNER", "true")
+    from datetime import date
+
+    from sqlalchemy import select as _select
+
+    from tradingagents_web.api import sectors as sectors_api
+    from tradingagents_web.models import Sector, SectorReport, SectorRun
+    from tradingagents_web.services.sector_fake_runner import SectorRunRequest
+
+    _, TestSessionLocal = app_with_test_db
+    db = TestSessionLocal()
+    try:
+        sector = Sector(
+            slug="execcancel", name="ExecCancel", keywords=[],
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(sector)
+        db.commit()
+        sid = sector.id
+        db.add(SectorRun(
+            id="exec-cancel", sector_id=sid, status="cancelled",
+            started_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    await sectors_api._execute_sector_run(SectorRunRequest(
+        run_id="exec-cancel", sector_id=sid, sector_slug="execcancel",
+        sector_name="ExecCancel", keywords=[], analysis_date=date(2026, 6, 2),
+    ))
+
+    db = TestSessionLocal()
+    try:
+        run = db.get(SectorRun, "exec-cancel")
+        assert run.status == "cancelled"  # not overwritten by completion
+        rep = db.execute(
+            _select(SectorReport).where(SectorReport.run_id == "exec-cancel")
+        ).scalar_one_or_none()
+        assert rep is None  # result discarded
+    finally:
+        db.close()
