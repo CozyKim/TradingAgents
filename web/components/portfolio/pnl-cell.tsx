@@ -1,15 +1,18 @@
 "use client";
-import { useCurrency, formatPrice } from "@/lib/currency";
+import { useCurrency, formatPrice, type Currency } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 
 export function PnLCell({
   qty,
   avgCost,
   lastPrice,
+  sourceCurrency = "USD",
 }: {
   qty: number;
   avgCost: number;
   lastPrice: number | null;
+  /** 평단가·현재가의 원본 통화(종목 거래소 기준). 둘은 같은 종목이라 통화가 일치한다. */
+  sourceCurrency?: Currency;
 }) {
   const ctx = useCurrency();
   if (lastPrice == null)
@@ -21,7 +24,7 @@ export function PnLCell({
   const cls = pnl >= 0 ? "text-pos" : "text-neg";
   return (
     <span className={cn("font-mono text-xs tabular-nums", cls)}>
-      {formatPrice(pnl, ctx, { signed: true })} ({pct >= 0 ? "+" : ""}
+      {formatPrice(pnl, sourceCurrency, ctx, { signed: true })} ({pct >= 0 ? "+" : ""}
       {pct.toFixed(1)}%)
     </span>
   );

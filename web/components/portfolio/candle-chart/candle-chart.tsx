@@ -19,7 +19,7 @@ import type { PricePoint } from "@/lib/prices";
 import type { SignalMarker } from "./types";
 import type { ChartSettings } from "@/lib/chart-settings";
 import { sma } from "@/lib/indicators";
-import { useCurrency, formatPrice } from "@/lib/currency";
+import { useCurrency, formatPrice, currencyForTicker } from "@/lib/currency";
 import { CHART, PANE_HEIGHT } from "./series-config";
 import { IntervalTabs } from "./interval-tabs";
 import { OhlcHeader } from "./ohlc-header";
@@ -50,6 +50,8 @@ const MARKER_STYLE: Record<
 };
 
 export interface CandleChartProps {
+  /** 종목 심볼 — 가격축/헤더의 원본 통화를 판별하는 데 쓴다. */
+  ticker?: string;
   points: PricePoint[];
   signals?: SignalMarker[];
   avgCost?: number;
@@ -59,6 +61,7 @@ export interface CandleChartProps {
 }
 
 export function CandleChart({
+  ticker,
   points,
   signals = [],
   avgCost,
@@ -67,6 +70,9 @@ export function CandleChart({
   onSettingsReset,
 }: CandleChartProps) {
   const ctx = useCurrency();
+  // 캔들 데이터는 거래소 원본 통화로 들어오므로, 축/헤더 포맷도 그 통화 기준으로
+  // 환산한다. ticker가 없으면 USD로 가정(기존 동작 유지).
+  const sourceCurrency = currencyForTicker(ticker ?? "");
   // 캔들·거래량·RSI·Stoch 각각이 별도 pane이며, 픽셀 높이로 stretch factor를 고정.
   // 컨테이너 높이를 ∑(켜진 pane)으로 맞추는 한 각 pane은 자기 픽셀 크기를 유지한다.
   const height =
@@ -117,7 +123,8 @@ export function CandleChart({
       wickDownColor: CHART.down,
       priceFormat: {
         type: "custom",
-        formatter: (price: number) => formatPrice(price, ctx, { usdDecimals: 0 }),
+        formatter: (price: number) =>
+          formatPrice(price, sourceCurrency, ctx, { usdDecimals: 0 }),
         minMove: 0.01,
       },
       // 우측 axis의 빨간 현재가 배지(lastValueVisible)를 끈다 — 좁은 모바일 폭에서
@@ -308,11 +315,12 @@ export function CandleChart({
     candleRef.current.applyOptions({
       priceFormat: {
         type: "custom",
-        formatter: (price: number) => formatPrice(price, ctx, { usdDecimals: 0 }),
+        formatter: (price: number) =>
+          formatPrice(price, sourceCurrency, ctx, { usdDecimals: 0 }),
         minMove: 0.01,
       },
     });
-  }, [ctx.currency, ctx.fxRate]);
+  }, [sourceCurrency, ctx.currency, ctx.fxRate]);
 
   // 옵션 시리즈(SMA/EMA/Bollinger/RSI/Stoch) — settings 토글에 따라 add/remove.
   // 캔들·거래량·거래량 MA는 본 effect와 무관하므로 깜빡이지 않음.
@@ -341,7 +349,11 @@ export function CandleChart({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <OhlcHeader current={headerCurrent} prevClose={headerPrev} />
+        <OhlcHeader
+          current={headerCurrent}
+          prevClose={headerPrev}
+          sourceCurrency={sourceCurrency}
+        />
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 min-w-0">
           <IntervalTabs value={interval} onChange={handleIntervalChange} />
           <IndicatorToolbar

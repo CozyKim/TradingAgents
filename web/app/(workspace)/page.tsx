@@ -11,6 +11,7 @@ import { useSchedules } from "@/hooks/use-schedules";
 import { getPriceHistory } from "@/lib/prices";
 import { RunListItem } from "@/lib/runs";
 import { useCurrency, formatPrice } from "@/lib/currency";
+import { computePortfolioTotals } from "@/lib/portfolio-totals";
 
 export default function DashboardPage() {
   const { data: holdings } = useHoldings();
@@ -19,6 +20,7 @@ export default function DashboardPage() {
     { page_size: 100 },
     { refetchInterval: 5000, staleTime: 0 },
   );
+  const ctx = useCurrency();
   const [prices, setPrices] = useState<Record<string, number | null>>({});
 
   useEffect(() => {
@@ -43,30 +45,12 @@ export default function DashboardPage() {
     };
   }, [holdings?.items]);
 
-  const totals = useMemo(() => {
-    let value = 0;
-    let cost = 0;
-    let priced = 0;
-    for (const h of holdings?.items ?? []) {
-      cost += h.qty * h.avg_cost;
-      const last = prices[h.ticker];
-      if (last != null) {
-        value += h.qty * last;
-        priced += 1;
-      }
-    }
-    const positions = holdings?.items.length ?? 0;
-    const fullyPriced = priced === positions && positions > 0;
-    const pnl = fullyPriced ? value - cost : null;
-    const pnlPct = fullyPriced && cost > 0 ? (pnl! / cost) * 100 : null;
-    return {
-      value: fullyPriced ? value : null,
-      cost,
-      pnl,
-      pnlPct,
-      positions,
-    };
-  }, [holdings?.items, prices]);
+  // 종목마다 원본 통화가 다르므로(한국=원, 미국=달러) USD 기준으로 정규화해 합산한다.
+  // 표시는 fmtMoney가 USD 합계를 현재 표시 통화로 다시 환산한다.
+  const totals = useMemo(
+    () => computePortfolioTotals(holdings?.items ?? [], prices, ctx.fxRate),
+    [holdings?.items, prices, ctx.fxRate],
+  );
 
   const latestByTicker = useMemo(() => {
     const out: Record<string, RunListItem | undefined> = {};
@@ -78,8 +62,8 @@ export default function DashboardPage() {
 
   const runningRuns = (runs?.items ?? []).filter((r) => r.status === "running");
 
-  const ctx = useCurrency();
-  const fmtMoney = (n: number | null) => formatPrice(n, ctx);
+  // totals는 USD 기준 합계이므로 sourceCurrency="USD"로 표시 통화에 맞게 환산한다.
+  const fmtMoney = (n: number | null) => formatPrice(n, "USD", ctx);
 
   const pnlTone =
     totals.pnl == null ? "neutral" : totals.pnl >= 0 ? "pos" : "neg";
@@ -128,7 +112,7 @@ export default function DashboardPage() {
                         : "font-num text-[15px] font-bold text-text-2"
                   }
                 >
-                  {formatPrice(totals.pnl, ctx, { signed: true })}
+                  {formatPrice(totals.pnl, "USD", ctx, { signed: true })}
                 </span>
                 {totals.pnlPct != null && (
                   <span
@@ -221,7 +205,7 @@ export default function DashboardPage() {
         />
         <MetricCard
           label="평가 손익"
-          value={formatPrice(totals.pnl, ctx, { signed: true })}
+          value={formatPrice(totals.pnl, "USD", ctx, { signed: true })}
           delta={
             totals.pnlPct == null
               ? undefined

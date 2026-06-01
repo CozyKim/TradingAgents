@@ -1,11 +1,18 @@
 "use client";
-import { formatPrice, useCurrency, type CurrencyCtx } from "@/lib/currency";
+import {
+  formatPrice,
+  useCurrency,
+  type Currency,
+  type CurrencyCtx,
+} from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import type { PricePoint } from "@/lib/prices";
 
 interface OhlcHeaderProps {
   current: PricePoint | null;
   prevClose: number | null;
+  /** OHLC 값의 거래소 원본 통화. 기본 USD. */
+  sourceCurrency?: Currency;
 }
 
 function pctText(value: number, base: number): string {
@@ -23,18 +30,20 @@ function Field({
   value,
   base,
   ctx,
+  sourceCurrency,
 }: {
   label: string;
   value: number;
   base: number | null;
   ctx: Pick<CurrencyCtx, "currency" | "fxRate">;
+  sourceCurrency: Currency;
 }) {
   const hasBase = base != null;
   return (
     <div className="flex items-baseline gap-1.5 font-mono text-2xs">
       <span className="text-text-3">{label}</span>
       <span className="tabular-nums text-text-1">
-        {formatPrice(value, ctx)}
+        {formatPrice(value, sourceCurrency, ctx)}
       </span>
       {hasBase && (
         <span className={cn("tabular-nums", pctClass(value, base!))}>
@@ -46,15 +55,20 @@ function Field({
   );
 }
 
-export function OhlcHeader({ current, prevClose }: OhlcHeaderProps) {
+export function OhlcHeader({
+  current,
+  prevClose,
+  sourceCurrency = "USD",
+}: OhlcHeaderProps) {
   const ctx = useCurrency();
   if (!current) return <div className="h-6" />;
+  const fieldProps = { base: prevClose, ctx, sourceCurrency };
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-      <Field label="시가" value={current.open} base={prevClose} ctx={ctx} />
-      <Field label="고가" value={current.high} base={prevClose} ctx={ctx} />
-      <Field label="저가" value={current.low} base={prevClose} ctx={ctx} />
-      <Field label="종가" value={current.close} base={prevClose} ctx={ctx} />
+      <Field label="시가" value={current.open} {...fieldProps} />
+      <Field label="고가" value={current.high} {...fieldProps} />
+      <Field label="저가" value={current.low} {...fieldProps} />
+      <Field label="종가" value={current.close} {...fieldProps} />
     </div>
   );
 }

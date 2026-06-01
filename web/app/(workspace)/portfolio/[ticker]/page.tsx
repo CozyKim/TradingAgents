@@ -10,7 +10,7 @@ import { useChartSettings } from "@/hooks/use-chart-settings";
 import { CandleChart, type SignalMarker } from "@/components/portfolio/candle-chart";
 import { QtyCell, AvgCostCell } from "@/components/portfolio/qty-cell";
 import { SignalBadge } from "@/components/shared/signal-badge";
-import { useCurrency, formatPrice } from "@/lib/currency";
+import { useCurrency, formatPrice, currencyForTicker } from "@/lib/currency";
 
 export default function PortfolioDetail() {
   const params = useParams<{ ticker: string }>();
@@ -26,6 +26,8 @@ export default function PortfolioDetail() {
   const { data: price, isLoading: priceLoading } = usePriceHistory(ticker, 365);
   const { settings, setSettings, reset } = useChartSettings();
   const ctx = useCurrency();
+  // 이 종목의 거래소 원본 통화(한국=원, 그 외=달러). 모든 가격 표시의 기준.
+  const cur = currencyForTicker(ticker);
 
   const holding = holdings?.items.find((h) => h.ticker === ticker);
 
@@ -75,14 +77,18 @@ export default function PortfolioDetail() {
               <div className="text-2xs uppercase tracking-widest text-text-3">
                 Avg cost
               </div>
-              <AvgCostCell holdingId={holding.id} avgCost={holding.avg_cost} />
+              <AvgCostCell
+                holdingId={holding.id}
+                avgCost={holding.avg_cost}
+                sourceCurrency={cur}
+              />
             </div>
             <div>
               <div className="text-2xs uppercase tracking-widest text-text-3">
                 Last
               </div>
               <div className="font-mono tabular-nums">
-                {formatPrice(last, ctx)}
+                {formatPrice(last, cur, ctx)}
               </div>
             </div>
             <div>
@@ -94,7 +100,7 @@ export default function PortfolioDetail() {
                   pnl == null ? "" : pnl >= 0 ? "text-pos" : "text-neg"
                 }`}
               >
-                {formatPrice(pnl, ctx, { signed: true })}
+                {formatPrice(pnl, cur, ctx, { signed: true })}
               </div>
             </div>
           </CardContent>
@@ -120,6 +126,7 @@ export default function PortfolioDetail() {
             />
           ) : (
             <CandleChart
+              ticker={ticker}
               points={price?.points ?? []}
               signals={signals}
               avgCost={holding?.avg_cost}
