@@ -57,7 +57,13 @@ export default function NewSectorPage() {
           setScanning(false);
           // Refresh the version list, then select the freshly saved scan.
           await qc.invalidateQueries({ queryKey: ["trending-scans"] });
-          if (scanId != null) setSelectedScanId(scanId);
+          if (scanId != null) {
+            setSelectedScanId(scanId);
+          } else {
+            // 빈 결과는 저장되지 않아 scan_id가 없다 — 완료됐지만 표시할 게
+            // 없음을 알려, "한 번도 안 누름"과 구분한다.
+            setScanError("이번 추천에서는 새로운 핫 섹터를 찾지 못했습니다. 잠시 후 다시 시도해 주세요.");
+          }
         },
         onError: (msg) => {
           setScanError(msg);
