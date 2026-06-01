@@ -21,6 +21,7 @@ EventType = Literal[
     "done",
     "error",
     "cancelled",
+    "heartbeat",
     # 채팅 turn 전용
     "token",
     "tool_call",
@@ -74,8 +75,10 @@ class EventBus:
         self._counters: dict[str, int] = {}
         self._finished: set[str] = set()
 
-    def publish(self, run_id: str, event: AnalysisEvent) -> AnalysisEvent:
-        """Publish an event to all subscribers and append to history.
+    def publish(
+        self, run_id: str, event: AnalysisEvent, *, buffer: bool = True
+    ) -> AnalysisEvent:
+        """Publish an event to all subscribers and (optionally) append to history.
 
         Assigns a monotonic per-run sequence number before storing/forwarding.
         If the history buffer is full the oldest event is silently dropped.
@@ -83,6 +86,9 @@ class EventBus:
         Args:
             run_id: Identifier of the analysis run.
             event: The event to publish. The ``seq`` field is overwritten.
+            buffer: When False the event is delivered to live subscribers only
+                and NOT retained in history. Used for heartbeats so that a
+                re-subscribing client never replays stale liveness signals.
 
         Returns:
             The stamped event with its assigned sequence number.
@@ -91,8 +97,9 @@ class EventBus:
         self._counters[run_id] = seq
         stamped = AnalysisEvent(type=event.type, data=copy.copy(event.data), seq=seq)
 
-        buf = self._history.setdefault(run_id, deque(maxlen=self._max))
-        buf.append(stamped)
+        if buffer:
+            buf = self._history.setdefault(run_id, deque(maxlen=self._max))
+            buf.append(stamped)
 
         for q in list(self._subs.get(run_id, set())):
             q.put_nowait(stamped)
