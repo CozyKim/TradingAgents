@@ -25,12 +25,17 @@ def _truncate(text: str, limit: int = _BODY_MAX) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-def get_social_messages_stocktwits(ticker: str, limit: int = 30) -> str:
+def get_social_messages_stocktwits(
+    ticker: str, limit: int = 30, **_routing_kwargs: object
+) -> str:
     """Fetch recent retail-investor messages for a ticker from StockTwits.
 
     Args:
         ticker: Bare ticker symbol (e.g. "AAPL").
         limit: Max messages, clamped to [1, 50].
+        **_routing_kwargs: Ignored. ``route_to_vendor`` forwards the Naver-only
+            ``sort`` option to every get_social_messages vendor; the StockTwits
+            stream is always newest-first.
 
     Returns:
         A markdown bullet list, or an explicit no-data message. Network-level

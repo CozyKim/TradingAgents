@@ -25,6 +25,7 @@ from .alpha_vantage import (
 from .alpha_vantage_common import AlphaVantageRateLimitError
 from .finnhub_social import get_social_sentiment_finnhub
 from .finnhub_common import FinnhubRateLimitError
+from .naver_finance_board import get_social_messages_naver
 from .stocktwits import get_social_messages_stocktwits
 
 # Configuration and routing logic
@@ -125,8 +126,39 @@ VENDOR_METHODS = {
     },
     "get_social_messages": {
         "stocktwits": get_social_messages_stocktwits,
+        "naver": get_social_messages_naver,
     },
 }
+
+# Vendors whose coverage is limited to a single market. A vendor absent from
+# this map is treated as global (always eligible). Used to skip vendors that
+# cannot serve a given ticker's exchange — e.g. Finnhub's free tier returns
+# HTTP 403 for Korean symbols, StockTwits has no Korean streams, and the Naver
+# 종목토론방 is Korea-only.
+_VENDOR_MARKET = {
+    "finnhub": "us",  # free tier: non-US symbols 403
+    "stocktwits": "us",  # no Korean streams
+    "naver": "kr",  # 종목토론방: .KS/.KQ only
+}
+
+
+def _is_korean_ticker(symbol: object) -> bool:
+    """Return True for Yahoo-style Korean tickers (``005930.KS`` / ``035720.KQ``)."""
+    return isinstance(symbol, str) and symbol.strip().upper().endswith((".KS", ".KQ"))
+
+
+def _vendor_supports_ticker(vendor: str, ticker: object) -> bool:
+    """Return True unless ``vendor`` is market-scoped and ``ticker`` is out of scope.
+
+    Non-string first args (e.g. ``get_global_news`` takes a date) and vendors
+    without a market scope are always considered supported.
+    """
+    market = _VENDOR_MARKET.get(vendor)
+    if market is None or not isinstance(ticker, str):
+        return True
+    is_kr = _is_korean_ticker(ticker)
+    return is_kr if market == "kr" else not is_kr
+
 
 def get_category_for_method(method: str) -> str:
     """Get the category that contains the specified method."""
@@ -166,8 +198,14 @@ def route_to_vendor(method: str, *args, **kwargs):
         if vendor not in fallback_vendors:
             fallback_vendors.append(vendor)
 
+    ticker = args[0] if args else None
+
     for vendor in fallback_vendors:
         if vendor not in VENDOR_METHODS[method]:
+            continue
+        # Skip vendors that can't serve this ticker's market (e.g. Finnhub for
+        # Korean tickers, Naver for US tickers) so we fall through to one that can.
+        if not _vendor_supports_ticker(vendor, ticker):
             continue
 
         vendor_impl = VENDOR_METHODS[method][vendor]

@@ -33,7 +33,9 @@ DEFAULT_CONFIG = {
         "technical_indicators": "yfinance",  # Options: alpha_vantage, yfinance
         "fundamental_data": "yfinance",  # Options: alpha_vantage, yfinance
         "news_data": "yfinance",  # Options: alpha_vantage, yfinance
-        "social_data": "finnhub",  # Options: finnhub, stocktwits
+        # Options: finnhub, stocktwits, naver. Korean tickers (.KS/.KQ) auto-route
+        # to naver (종목토론방) since Finnhub's free tier 403s on non-US symbols.
+        "social_data": "finnhub",
     },
     # Tool-level configuration (takes precedence over category-level)
     "tool_vendors": {
