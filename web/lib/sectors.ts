@@ -140,7 +140,16 @@ export async function getReport(sectorId: number, reportId: number): Promise<Sec
 
 export async function getSectorBySlug(slug: string): Promise<SectorSummary | null> {
   const all = await listSectors();
-  return all.find((s) => s.slug === slug) ?? null;
+  // useParams()가 경로 세그먼트를 percent-encoded 상태로 넘길 수 있어,
+  // 한글 등 비-ASCII slug는 DB의 디코딩된 값과 직접 비교하면 어긋난다.
+  // 원본과 디코딩본을 모두 비교해 양쪽 케이스를 안전하게 매칭한다.
+  let decoded = slug;
+  try {
+    decoded = decodeURIComponent(slug);
+  } catch {
+    /* 잘못된 인코딩이면 원본 그대로 비교 */
+  }
+  return all.find((s) => s.slug === slug || s.slug === decoded) ?? null;
 }
 
 export async function getActiveRun(sectorId: number): Promise<SectorRun | null> {
@@ -150,4 +159,117 @@ export async function getActiveRun(sectorId: number): Promise<SectorRun | null> 
   });
   if (!r.ok) throw new Error(`getActiveRun ${r.status}`);
   return r.json();
+}
+
+export interface TrendingSignals {
+  web_trend: number;
+  community_volume: number;
+  sentiment: number;
+  momentum: number;
+}
+
+export interface TrendingSector {
+  name: string;
+  description: string;
+  keywords: string[];
+  tickers: string[];
+  hotness_score: number;
+  signals: TrendingSignals;
+  rationale: string;
+}
+
+export async function startTrendingScan(): Promise<{ job_id: string }> {
+  const r = await fetch("/api/sectors/trending", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...XHR_HEADERS },
+    credentials: "include",
+  });
+  if (!r.ok) {
+    const detail = await r.text();
+    throw new Error(`startTrendingScan ${r.status}: ${detail}`);
+  }
+  return r.json();
+}
+
+export interface TrendingScanSummary {
+  id: number;
+  created_at: string;
+  sector_count: number;
+}
+
+export interface TrendingScanDetail {
+  id: number;
+  created_at: string;
+  sectors: TrendingSector[];
+}
+
+export async function listTrendingScans(): Promise<TrendingScanSummary[]> {
+  const r = await fetch("/api/sectors/trending/scans", { credentials: "include" });
+  if (!r.ok) throw new Error(`listTrendingScans ${r.status}`);
+  return r.json();
+}
+
+export async function getTrendingScan(id: number): Promise<TrendingScanDetail> {
+  const r = await fetch(`/api/sectors/trending/scans/${id}`, {
+    credentials: "include",
+  });
+  if (!r.ok) throw new Error(`getTrendingScan ${r.status}`);
+  return r.json();
+}
+
+export type TrendingStreamHandlers = {
+  onProgress?: (data: { stage?: string; message?: string; progress?: string }) => void;
+  onDone?: (sectors: TrendingSector[], scanId?: number) => void;
+  onError?: (message: string) => void;
+};
+
+/** Subscribe to a trending scan's SSE stream. Returns a cancel function. */
+export function openTrendingStream(
+  jobId: string,
+  handlers: TrendingStreamHandlers,
+): () => void {
+  const es = new EventSource(
+    `/api/sectors/trending/${encodeURIComponent(jobId)}/stream`,
+    { withCredentials: true },
+  );
+  // Track whether the stream ended normally via the "close" event.
+  let closed = false;
+
+  es.addEventListener("progress", (raw) => {
+    try {
+      handlers.onProgress?.(JSON.parse((raw as MessageEvent).data));
+    } catch {
+      /* ignore */
+    }
+  });
+  es.addEventListener("done", (raw) => {
+    try {
+      const data = JSON.parse((raw as MessageEvent).data);
+      handlers.onDone?.(data.sectors ?? [], data.scan_id);
+    } catch {
+      handlers.onDone?.([]);
+    }
+  });
+  es.addEventListener("error", (raw) => {
+    try {
+      handlers.onError?.(JSON.parse((raw as MessageEvent).data).message ?? "오류");
+    } catch {
+      /* EventSource connection error event has no JSON body */
+    }
+  });
+  es.addEventListener("close", () => {
+    closed = true;
+    es.close();
+  });
+  // Guard against network drops that don't emit a server-side "error" event.
+  // Only fire once the EventSource is fully CLOSED and not via a normal close.
+  es.onerror = () => {
+    if (!closed && es.readyState === EventSource.CLOSED) {
+      handlers.onError?.("스트림 연결이 끊겼습니다.");
+    }
+  };
+  return () => {
+    closed = true;
+    es.close();
+  };
 }
