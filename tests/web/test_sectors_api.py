@@ -375,3 +375,92 @@ def test_mark_orphan_runs_failed(app_with_test_db):
         assert done.status == "completed"  # 건드리지 않음
     finally:
         db.close()
+
+
+def _make_running_run(TestSessionLocal, slug, run_id):
+    from tradingagents_web.models import Sector, SectorRun
+    db = TestSessionLocal()
+    try:
+        sector = Sector(
+            slug=slug, name=slug, keywords=[],
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(sector)
+        db.commit()
+        sid = sector.id
+        db.add(SectorRun(
+            id=run_id, sector_id=sid, status="running", phase="macro",
+            started_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+        return sid
+    finally:
+        db.close()
+
+
+def test_cancel_sector_run_marks_cancelled(auth_client, app_with_test_db):
+    from tradingagents_web.models import SectorRun
+    from tradingagents_web.services.event_bus import get_event_bus
+
+    _, TestSessionLocal = app_with_test_db
+    sid = _make_running_run(TestSessionLocal, "cancelme", "run-cancel")
+
+    resp = auth_client.delete(
+        f"/api/sectors/{sid}/runs/run-cancel", headers=XHR_HEADERS
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"ok": True}
+
+    db = TestSessionLocal()
+    try:
+        row = db.get(SectorRun, "run-cancel")
+        assert row.status == "cancelled"
+        assert row.finished_at is not None
+    finally:
+        db.close()
+
+    types = [e.type for e in get_event_bus().history("run-cancel")]
+    assert "cancelled" in types
+
+
+def test_cancel_sector_run_wrong_sector_404(auth_client, app_with_test_db):
+    _, TestSessionLocal = app_with_test_db
+    sid = _make_running_run(TestSessionLocal, "wrongsec", "run-wrong")
+    # 존재하는 run이지만 다른 sector_id로 요청 → 404 (정보 노출 방지)
+    resp = auth_client.delete(
+        f"/api/sectors/{sid + 999}/runs/run-wrong", headers=XHR_HEADERS
+    )
+    assert resp.status_code == 404
+
+
+def test_cancel_sector_run_not_running_409(auth_client, app_with_test_db):
+    from tradingagents_web.models import Sector, SectorRun
+    _, TestSessionLocal = app_with_test_db
+    db = TestSessionLocal()
+    try:
+        sector = Sector(
+            slug="completed-sec", name="C", keywords=[],
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(sector)
+        db.commit()
+        sid = sector.id
+        db.add(SectorRun(
+            id="run-done", sector_id=sid, status="completed",
+            started_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+    finally:
+        db.close()
+    resp = auth_client.delete(
+        f"/api/sectors/{sid}/runs/run-done", headers=XHR_HEADERS
+    )
+    assert resp.status_code == 409
+
+
+def test_cancel_sector_run_csrf_rejected(auth_client, app_with_test_db):
+    _, TestSessionLocal = app_with_test_db
+    sid = _make_running_run(TestSessionLocal, "csrfsec", "run-csrf")
+    resp = auth_client.delete(f"/api/sectors/{sid}/runs/run-csrf")  # no XHR header
+    assert resp.status_code == 403

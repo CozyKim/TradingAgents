@@ -563,7 +563,13 @@ async def start_sector_run(
     )
     task = asyncio.create_task(_execute_sector_run(request))
     _BACKGROUND_TASKS.add(task)
-    task.add_done_callback(_BACKGROUND_TASKS.discard)
+    _RUN_TASKS[run_id] = task
+
+    def _cleanup(t: asyncio.Task, rid: str = run_id) -> None:
+        _BACKGROUND_TASKS.discard(t)
+        _RUN_TASKS.pop(rid, None)
+
+    task.add_done_callback(_cleanup)
 
     return SectorRunOut.model_validate(run)
 
@@ -571,10 +577,10 @@ async def start_sector_run(
 async def _execute_sector_run(request: SectorRunRequest) -> None:
     """Background driver — runs the (real or fake) sector runner + persists.
 
-    Opens a fresh DB session independent of the HTTP request-scoped session
-    (which is closed by FastAPI before this coroutine completes). On success
-    the matching ``sector_runs`` row is flipped to ``completed`` and a new
-    ``sector_reports`` row is inserted with version = max(prev) + 1.
+    Publishes liveness heartbeats throughout. Honors cancellation two ways:
+    a hard ``asyncio.CancelledError`` (from the DELETE endpoint's task.cancel())
+    and a cooperative DB status check that discards a result if a cancel landed
+    just as the runner finished.
 
     Args:
         request: Fully populated :class:`SectorRunRequest`.
@@ -582,20 +588,26 @@ async def _execute_sector_run(request: SectorRunRequest) -> None:
     bus = get_event_bus()
     runner = _build_runner(bus)
     db = _session_factory()
+    stop = asyncio.Event()
+    pump = asyncio.create_task(_heartbeat_pump(bus, request.run_id, stop))
     try:
         try:
             result = await runner.run(request)
+        except asyncio.CancelledError:
+            # Hard cancel: the DELETE endpoint already flipped the row to
+            # "cancelled" and published the cancelled event. Just ensure the
+            # stream is closed and let the cancellation propagate.
+            if not bus.is_finished(request.run_id):
+                bus.finish(request.run_id)
+            raise
         except Exception as exc:  # noqa: BLE001 — record any failure
             logger.exception("sector_run %s failed", request.run_id)
             row = db.get(SectorRun, request.run_id)
-            if row is not None:
+            if row is not None and row.status == "running":
                 row.status = "failed"
                 row.error = str(exc)[:2000]
                 row.finished_at = datetime.now(timezone.utc)
                 db.commit()
-            # RealSectorRunner publishes error + finish before raising, but
-            # FakeSectorRunner / unexpected paths might not — defend against
-            # orphan subscribers.
             if not bus.is_finished(request.run_id):
                 bus.publish(
                     request.run_id,
@@ -604,12 +616,14 @@ async def _execute_sector_run(request: SectorRunRequest) -> None:
                 bus.finish(request.run_id)
             return
 
-        # Compute next version + insert the SectorReport AND flip status in
-        # a single transaction — otherwise a SSE client reacting to `done`
-        # could race against report persistence. The runner intentionally
-        # does NOT publish `done` / `bus.finish()`; we do it below AFTER the
-        # commit succeeds so observers can trust that the latest report is
-        # visible by the time they see completion.
+        # Cooperative cancel: a DELETE may have flipped status to "cancelled"
+        # while the runner was finishing — discard the result, don't overwrite.
+        row = db.get(SectorRun, request.run_id)
+        if row is not None and row.status == "cancelled":
+            if not bus.is_finished(request.run_id):
+                bus.finish(request.run_id)
+            return
+
         max_version = db.execute(
             select(SectorReport.version)
             .where(SectorReport.sector_id == request.sector_id)
@@ -630,7 +644,6 @@ async def _execute_sector_run(request: SectorRunRequest) -> None:
                 created_at=datetime.now(timezone.utc),
             )
         )
-        row = db.get(SectorRun, request.run_id)
         if row is not None:
             row.status = "completed"
             row.phase = "outlook"
@@ -638,16 +651,75 @@ async def _execute_sector_run(request: SectorRunRequest) -> None:
             row.search_call_count = result.search_call_count
         db.commit()
 
-        # All persistence done — now safe to signal completion. Order matters:
-        # `done` before `finish` so the sentinel arrives last and subscribers
-        # can rely on `done.data["sector_id"]` to know which sector to refresh.
         bus.publish(
             request.run_id,
             AnalysisEvent(type="done", data={"sector_id": request.sector_id}),
         )
         bus.finish(request.run_id)
     finally:
+        stop.set()
+        pump.cancel()
+        try:
+            await pump
+        except asyncio.CancelledError:
+            pass
         db.close()
+
+
+@router.delete("/{sector_id}/runs/{run_id}")
+async def cancel_sector_run(
+    sector_id: int,
+    run_id: str,
+    db: Annotated[OrmSession, Depends(get_db)],
+    _user: Annotated[User, Depends(get_current_user)],
+    _csrf: Annotated[None, Depends(require_xhr)] = None,
+) -> dict[str, bool]:
+    """Cancel a running sector analysis.
+
+    Mirrors api/runs.py::cancel_run — marks the row "cancelled", publishes a
+    ``cancelled`` event and closes the SSE stream. Additionally hard-cancels
+    the background asyncio task so in-flight LLM/search calls stop (saving
+    cost); the cooperative status check in ``_execute_sector_run`` discards any
+    result that lands in the race window.
+
+    Args:
+        sector_id: The sector the run must belong to (path-consistency check).
+        run_id: The run UUID to cancel.
+        db: Request-scoped SQLAlchemy session (injected).
+        _user: Authenticated user (injected).
+        _csrf: XHR header CSRF guard (injected).
+
+    Returns:
+        ``{"ok": True}`` on success.
+
+    Raises:
+        HTTPException: 404 if the run is missing or belongs to another sector,
+            409 if it is not in "running" status.
+    """
+    row = db.get(SectorRun, run_id)
+    if row is None or row.sector_id != sector_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
+    if row.status != "running":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"cannot cancel run in status '{row.status}'",
+        )
+    row.status = "cancelled"
+    row.finished_at = datetime.now(timezone.utc)
+    db.commit()
+
+    bus = get_event_bus()
+    if not bus.is_finished(run_id):
+        bus.publish(
+            run_id,
+            AnalysisEvent(type="cancelled", data={"sector_id": sector_id}),
+        )
+        bus.finish(run_id)
+
+    task = _RUN_TASKS.get(run_id)
+    if task is not None and not task.done():
+        task.cancel()
+    return {"ok": True}
 
 
 @router.get("/{sector_id}/runs/active", response_model=SectorRunOut | None)
