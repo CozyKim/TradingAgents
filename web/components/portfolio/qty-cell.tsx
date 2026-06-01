@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { useUpdateHolding } from "@/hooks/use-holdings";
-import { useCurrency, formatPrice } from "@/lib/currency";
+import { useCurrency, formatPrice, type Currency } from "@/lib/currency";
 import type { HoldingUpdatePayload } from "@/lib/holdings";
 
 /**
@@ -113,22 +113,26 @@ export function QtyCell({
 export function AvgCostCell({
   holdingId,
   avgCost,
+  sourceCurrency = "USD",
   className,
 }: {
   holdingId: number;
   avgCost: number;
+  /** 평단가의 원본 통화(종목 거래소 기준). 한국 종목은 "KRW". 기본 USD. */
+  sourceCurrency?: Currency;
   className?: string;
 }) {
   const ctx = useCurrency();
-  // avg_cost는 USD로 저장되고 표시할 때만 환율 변환된다.
-  // 편집 input에는 USD 원본 값을 노출/저장하므로 안내 문구에 'USD 기준'을 명시한다.
+  // avg_cost는 종목 원본 통화로 저장되고 표시할 때만 표시 통화로 환산된다.
+  // 편집 input에는 원본 통화 값을 그대로 노출/저장하므로 안내 문구에 기준 통화를 명시한다.
+  const unit = sourceCurrency === "KRW" ? "원화" : "USD";
   return (
     <EditableNumberCell
       holdingId={holdingId}
       field="avg_cost"
       value={avgCost}
-      display={formatPrice(avgCost, ctx)}
-      title="클릭하여 평단가 수정 (USD 기준)"
+      display={formatPrice(avgCost, sourceCurrency, ctx)}
+      title={`클릭하여 평단가 수정 (${unit} 기준)`}
       className={className}
     />
   );

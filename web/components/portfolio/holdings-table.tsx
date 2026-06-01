@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Holding } from "@/lib/holdings";
 import { useDeleteHolding } from "@/hooks/use-holdings";
-import { useCurrency, formatPrice } from "@/lib/currency";
+import { useCurrency, formatPrice, currencyForTicker } from "@/lib/currency";
 import { MonitorToggle } from "./monitor-toggle";
 import { PnLCell } from "./pnl-cell";
 import { QtyCell, AvgCostCell } from "./qty-cell";
@@ -41,6 +41,7 @@ export function HoldingsTable({
         <tbody>
           {rows.map((h) => {
             const last = prices[h.ticker] ?? null;
+            const cur = currencyForTicker(h.ticker);
             return (
               <tr key={h.id} className="border-b border-border-1 hover:bg-bg-2">
                 <td className="py-2 font-mono">
@@ -52,13 +53,22 @@ export function HoldingsTable({
                   <QtyCell holdingId={h.id} qty={h.qty} />
                 </td>
                 <td className="text-right">
-                  <AvgCostCell holdingId={h.id} avgCost={h.avg_cost} />
+                  <AvgCostCell
+                    holdingId={h.id}
+                    avgCost={h.avg_cost}
+                    sourceCurrency={cur}
+                  />
                 </td>
                 <td className="text-right font-mono tabular-nums">
-                  {formatPrice(last, ctx)}
+                  {formatPrice(last, cur, ctx)}
                 </td>
                 <td className="text-right">
-                  <PnLCell qty={h.qty} avgCost={h.avg_cost} lastPrice={last} />
+                  <PnLCell
+                    qty={h.qty}
+                    avgCost={h.avg_cost}
+                    lastPrice={last}
+                    sourceCurrency={cur}
+                  />
                 </td>
                 <td className="text-center">
                   <MonitorToggle holdingId={h.id} enabled={h.monitor_enabled} />

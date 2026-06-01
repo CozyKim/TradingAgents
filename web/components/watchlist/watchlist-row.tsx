@@ -2,7 +2,7 @@
 import Link from "next/link";
 
 import { usePriceHistory } from "@/hooks/use-price-history";
-import { useCurrency, formatPrice } from "@/lib/currency";
+import { useCurrency, formatPrice, currencyForTicker } from "@/lib/currency";
 import type { WatchlistItem } from "@/lib/watchlist";
 
 /** 직전 종가 대비 등락%를 계산한다. 데이터가 부족하면 null. */
@@ -18,6 +18,7 @@ export function WatchlistRow({ item }: { item: WatchlistItem }) {
   // days=5: 현재가 + 직전 종가 등락 계산에 충분한 경량 호출. React Query 캐시 공유.
   const { data, isLoading, isError } = usePriceHistory(ticker, 5);
   const ctx = useCurrency();
+  const cur = currencyForTicker(ticker);
 
   const last = data?.last_close ?? null;
   const pct = data ? changePct(data.points, last) : null;
@@ -34,7 +35,7 @@ export function WatchlistRow({ item }: { item: WatchlistItem }) {
         </Link>
       </td>
       <td className="text-right font-mono tabular-nums text-sm">
-        {isLoading ? "…" : isError ? "—" : formatPrice(last, ctx)}
+        {isLoading ? "…" : isError ? "—" : formatPrice(last, cur, ctx)}
       </td>
       <td
         className={`text-right font-mono tabular-nums text-sm ${
