@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScheduleForm } from "@/components/schedules/schedule-form";
@@ -20,7 +22,10 @@ export default function NewSchedulePage() {
           <CardTitle>Configuration</CardTitle>
         </CardHeader>
         <CardContent>
-          <ScheduleForm />
+          {/* ScheduleForm이 useSearchParams를 쓰므로 정적 생성 시 Suspense 경계가 필요하다. */}
+          <Suspense fallback={<p className="text-xs text-text-3">Loading…</p>}>
+            <ScheduleForm />
+          </Suspense>
         </CardContent>
       </Card>
     </div>

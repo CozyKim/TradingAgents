@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import { RunForm } from "@/components/run/run-form";
 
 export default function RunPage() {
@@ -13,7 +15,10 @@ export default function RunPage() {
           골라주세요.
         </h1>
       </header>
-      <RunForm />
+      {/* RunForm이 useSearchParams를 쓰므로 정적 생성 시 Suspense 경계가 필요하다. */}
+      <Suspense fallback={<p className="text-xs text-text-3">Loading…</p>}>
+        <RunForm />
+      </Suspense>
     </div>
   );
 }
