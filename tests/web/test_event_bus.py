@@ -56,3 +56,16 @@ def test_publish_isolates_caller_dict_mutation():
     payload["step"] = 999
     history = bus.history("run-x")
     assert history[0].data == {"step": 1}
+
+
+@pytest.mark.asyncio
+async def test_publish_buffer_false_delivers_live_but_skips_history():
+    bus = EventBus()
+    async with bus.subscribe("hb-run") as queue:
+        bus.publish(
+            "hb-run", AnalysisEvent(type="heartbeat", data={}), buffer=False
+        )
+        ev = await asyncio.wait_for(queue.get(), 0.5)
+        assert ev.type == "heartbeat"
+    # 비버퍼링이라 히스토리에는 남지 않는다(재구독 시 옛 heartbeat 재생 방지).
+    assert bus.history("hb-run") == []

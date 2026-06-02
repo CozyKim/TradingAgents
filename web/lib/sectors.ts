@@ -191,6 +191,25 @@ export async function startTrendingScan(): Promise<{ job_id: string }> {
   return r.json();
 }
 
+export async function cancelSectorRun(
+  sectorId: number,
+  runId: string,
+): Promise<void> {
+  const r = await fetch(
+    `/api/sectors/${sectorId}/runs/${encodeURIComponent(runId)}`,
+    { method: "DELETE", headers: XHR_HEADERS, credentials: "include" },
+  );
+  if (!r.ok) throw new Error(`cancelSectorRun ${r.status}`);
+}
+
+export async function cancelTrendingScan(jobId: string): Promise<void> {
+  const r = await fetch(
+    `/api/sectors/trending/${encodeURIComponent(jobId)}`,
+    { method: "DELETE", headers: XHR_HEADERS, credentials: "include" },
+  );
+  if (!r.ok) throw new Error(`cancelTrendingScan ${r.status}`);
+}
+
 export interface TrendingScanSummary {
   id: number;
   created_at: string;
@@ -219,8 +238,10 @@ export async function getTrendingScan(id: number): Promise<TrendingScanDetail> {
 
 export type TrendingStreamHandlers = {
   onProgress?: (data: { stage?: string; message?: string; progress?: string }) => void;
+  onHeartbeat?: () => void;
   onDone?: (sectors: TrendingSector[], scanId?: number) => void;
   onError?: (message: string) => void;
+  onCancelled?: () => void;
 };
 
 /** Subscribe to a trending scan's SSE stream. Returns a cancel function. */
@@ -241,6 +262,12 @@ export function openTrendingStream(
     } catch {
       /* ignore */
     }
+  });
+  es.addEventListener("heartbeat", () => handlers.onHeartbeat?.());
+  es.addEventListener("cancelled", () => {
+    closed = true;
+    handlers.onCancelled?.();
+    es.close();
   });
   es.addEventListener("done", (raw) => {
     try {
@@ -272,4 +299,46 @@ export function openTrendingStream(
     closed = true;
     es.close();
   };
+}
+
+export type SectorRunStreamHandlers = {
+  onProgress?: (phase: string | null) => void;
+  onHeartbeat?: () => void;
+  onDone?: () => void;
+  onError?: (message: string) => void;
+  onCancelled?: () => void;
+};
+
+/** Subscribe to a sector run's SSE stream. Returns a cancel function. */
+export function openSectorRunStream(
+  sectorId: number,
+  runId: string,
+  handlers: SectorRunStreamHandlers,
+): () => void {
+  const es = new EventSource(
+    `/api/sectors/${sectorId}/runs/${encodeURIComponent(runId)}/stream`,
+    { withCredentials: true },
+  );
+  es.addEventListener("progress", (raw) => {
+    try {
+      const d = JSON.parse((raw as MessageEvent).data);
+      handlers.onProgress?.(typeof d.phase === "string" ? d.phase : null);
+    } catch {
+      /* ignore malformed payload */
+    }
+  });
+  es.addEventListener("heartbeat", () => handlers.onHeartbeat?.());
+  es.addEventListener("done", () => handlers.onDone?.());
+  es.addEventListener("cancelled", () => handlers.onCancelled?.());
+  es.addEventListener("error", (raw) => {
+    // Server-sent `event: error` carries a JSON body; native connection-error
+    // events do not — those are left to the client-side stall timer.
+    try {
+      handlers.onError?.(JSON.parse((raw as MessageEvent).data).message ?? "오류");
+    } catch {
+      /* connection blip — ignore */
+    }
+  });
+  es.addEventListener("close", () => es.close());
+  return () => es.close();
 }

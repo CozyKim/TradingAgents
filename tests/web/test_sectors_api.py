@@ -1,6 +1,11 @@
 """Tests for /api/sectors CRUD endpoints."""
 
+import asyncio
 from datetime import datetime, timezone
+
+import pytest
+
+from tradingagents_web.services.event_bus import EventBus
 
 # All mutating endpoints require the same CSRF marker every other API uses.
 XHR_HEADERS = {"X-Requested-With": "fetch"}
@@ -303,3 +308,280 @@ def test_report_for_wrong_sector_returns_404(auth_client, app_with_test_db):
         f"/api/sectors/{wrong_sector_id}/reports/{report_id}"
     )
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Heartbeat pump
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_heartbeat_pump_emits_until_stopped():
+    from tradingagents_web.api.sectors import _heartbeat_pump
+
+    bus = EventBus()
+    stop = asyncio.Event()
+    received: list[str] = []
+    async with bus.subscribe("pump-run") as queue:
+        pump = asyncio.create_task(
+            _heartbeat_pump(bus, "pump-run", stop, interval=0.01)
+        )
+        for _ in range(2):
+            ev = await asyncio.wait_for(queue.get(), 0.5)
+            assert ev is not None  # first events are heartbeats, not the sentinel
+            received.append(ev.type)
+        stop.set()
+        await pump
+    assert received == ["heartbeat", "heartbeat"]
+    assert bus.history("pump-run") == []  # buffer=False
+
+
+def test_mark_orphan_runs_failed(app_with_test_db):
+    from tradingagents_web.api.sectors import mark_orphan_runs_failed
+    from tradingagents_web.models import Sector, SectorRun
+
+    _, TestSessionLocal = app_with_test_db
+    db = TestSessionLocal()
+    try:
+        sector = Sector(
+            slug="orphan", name="Orphan", keywords=[],
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(sector)
+        db.commit()
+        sid = sector.id
+        db.add(SectorRun(
+            id="orphan-run", sector_id=sid, status="running",
+            started_at=datetime.now(timezone.utc),
+        ))
+        db.add(SectorRun(
+            id="done-run", sector_id=sid, status="completed",
+            started_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    n = mark_orphan_runs_failed(TestSessionLocal)
+    assert n == 1
+
+    db = TestSessionLocal()
+    try:
+        orphan = db.get(SectorRun, "orphan-run")
+        done = db.get(SectorRun, "done-run")
+        assert orphan.status == "failed"
+        assert "재시작" in (orphan.error or "")
+        assert orphan.finished_at is not None
+        assert done.status == "completed"  # 건드리지 않음
+    finally:
+        db.close()
+
+
+def _make_running_run(TestSessionLocal, slug, run_id):
+    from tradingagents_web.models import Sector, SectorRun
+    db = TestSessionLocal()
+    try:
+        sector = Sector(
+            slug=slug, name=slug, keywords=[],
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(sector)
+        db.commit()
+        sid = sector.id
+        db.add(SectorRun(
+            id=run_id, sector_id=sid, status="running", phase="macro",
+            started_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+        return sid
+    finally:
+        db.close()
+
+
+def test_cancel_sector_run_marks_cancelled(auth_client, app_with_test_db):
+    from tradingagents_web.models import SectorRun
+    from tradingagents_web.services.event_bus import get_event_bus
+
+    _, TestSessionLocal = app_with_test_db
+    sid = _make_running_run(TestSessionLocal, "cancelme", "run-cancel")
+
+    resp = auth_client.delete(
+        f"/api/sectors/{sid}/runs/run-cancel", headers=XHR_HEADERS
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"ok": True}
+
+    db = TestSessionLocal()
+    try:
+        row = db.get(SectorRun, "run-cancel")
+        assert row.status == "cancelled"
+        assert row.finished_at is not None
+    finally:
+        db.close()
+
+    types = [e.type for e in get_event_bus().history("run-cancel")]
+    assert "cancelled" in types
+
+
+def test_cancel_sector_run_wrong_sector_404(auth_client, app_with_test_db):
+    _, TestSessionLocal = app_with_test_db
+    sid = _make_running_run(TestSessionLocal, "wrongsec", "run-wrong")
+    # 존재하는 run이지만 다른 sector_id로 요청 → 404 (정보 노출 방지)
+    resp = auth_client.delete(
+        f"/api/sectors/{sid + 999}/runs/run-wrong", headers=XHR_HEADERS
+    )
+    assert resp.status_code == 404
+
+
+def test_cancel_sector_run_not_running_409(auth_client, app_with_test_db):
+    from tradingagents_web.models import Sector, SectorRun
+    _, TestSessionLocal = app_with_test_db
+    db = TestSessionLocal()
+    try:
+        sector = Sector(
+            slug="completed-sec", name="C", keywords=[],
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(sector)
+        db.commit()
+        sid = sector.id
+        db.add(SectorRun(
+            id="run-done", sector_id=sid, status="completed",
+            started_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+    finally:
+        db.close()
+    resp = auth_client.delete(
+        f"/api/sectors/{sid}/runs/run-done", headers=XHR_HEADERS
+    )
+    assert resp.status_code == 409
+
+
+def test_cancel_sector_run_csrf_rejected(auth_client, app_with_test_db):
+    _, TestSessionLocal = app_with_test_db
+    sid = _make_running_run(TestSessionLocal, "csrfsec", "run-csrf")
+    resp = auth_client.delete(f"/api/sectors/{sid}/runs/run-csrf")  # no XHR header
+    assert resp.status_code == 403
+
+
+def test_cancel_trending_scan_publishes_cancelled(auth_client):
+    from tradingagents_web.services.event_bus import get_event_bus
+
+    bus = get_event_bus()
+    job_id = "trend-cancel-job"
+    resp = auth_client.delete(
+        f"/api/sectors/trending/{job_id}", headers=XHR_HEADERS
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"ok": True}
+    assert bus.is_finished(job_id)
+    assert "cancelled" in [e.type for e in bus.history(job_id)]
+
+
+def test_cancel_trending_scan_csrf_rejected(auth_client):
+    resp = auth_client.delete("/api/sectors/trending/any-job")  # no XHR header
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_execute_sector_run_completes_and_persists(
+    app_with_test_db, monkeypatch
+):
+    """Happy path: the guarded completion UPDATE still writes the report and
+    flips status to completed when nothing cancels the run."""
+    monkeypatch.setenv("WEB_FAKE_RUNNER", "true")
+    from datetime import date
+
+    from sqlalchemy import select as _select
+
+    from tradingagents_web.api import sectors as sectors_api
+    from tradingagents_web.models import Sector, SectorReport, SectorRun
+    from tradingagents_web.services.sector_fake_runner import SectorRunRequest
+
+    _, TestSessionLocal = app_with_test_db
+    db = TestSessionLocal()
+    try:
+        sector = Sector(
+            slug="execdone", name="ExecDone", keywords=[],
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(sector)
+        db.commit()
+        sid = sector.id
+        db.add(SectorRun(
+            id="exec-done", sector_id=sid, status="running",
+            started_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    await sectors_api._execute_sector_run(SectorRunRequest(
+        run_id="exec-done", sector_id=sid, sector_slug="execdone",
+        sector_name="ExecDone", keywords=[], analysis_date=date(2026, 6, 2),
+    ))
+
+    db = TestSessionLocal()
+    try:
+        run = db.get(SectorRun, "exec-done")
+        assert run.status == "completed"
+        assert run.phase == "outlook"
+        rep = db.execute(
+            _select(SectorReport).where(SectorReport.run_id == "exec-done")
+        ).scalar_one_or_none()
+        assert rep is not None
+        assert rep.version == 1
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_execute_sector_run_discards_result_when_cancelled(
+    app_with_test_db, monkeypatch
+):
+    """If the row was cancelled before the runner finished, the result is
+    discarded: no report is written and the status stays cancelled."""
+    monkeypatch.setenv("WEB_FAKE_RUNNER", "true")
+    from datetime import date
+
+    from sqlalchemy import select as _select
+
+    from tradingagents_web.api import sectors as sectors_api
+    from tradingagents_web.models import Sector, SectorReport, SectorRun
+    from tradingagents_web.services.sector_fake_runner import SectorRunRequest
+
+    _, TestSessionLocal = app_with_test_db
+    db = TestSessionLocal()
+    try:
+        sector = Sector(
+            slug="execcancel", name="ExecCancel", keywords=[],
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(sector)
+        db.commit()
+        sid = sector.id
+        db.add(SectorRun(
+            id="exec-cancel", sector_id=sid, status="cancelled",
+            started_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    await sectors_api._execute_sector_run(SectorRunRequest(
+        run_id="exec-cancel", sector_id=sid, sector_slug="execcancel",
+        sector_name="ExecCancel", keywords=[], analysis_date=date(2026, 6, 2),
+    ))
+
+    db = TestSessionLocal()
+    try:
+        run = db.get(SectorRun, "exec-cancel")
+        assert run.status == "cancelled"  # not overwritten by completion
+        rep = db.execute(
+            _select(SectorReport).where(SectorReport.run_id == "exec-cancel")
+        ).scalar_one_or_none()
+        assert rep is None  # result discarded
+    finally:
+        db.close()

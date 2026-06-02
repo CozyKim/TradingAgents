@@ -1,5 +1,7 @@
 "use client";
 
+import type { RunUiState } from "@/lib/run-liveness";
+
 const PHASES: { key: string; label: string }[] = [
   { key: "macro", label: "거시 환경" },
   { key: "value_chain", label: "가치사슬" },
@@ -7,10 +9,17 @@ const PHASES: { key: string; label: string }[] = [
   { key: "outlook", label: "투자 전망" },
 ];
 
-export function PhaseProgress({ current }: { current: string | null }) {
+export function PhaseProgress({
+  current,
+  state,
+}: {
+  current: string | null;
+  state?: RunUiState;
+}) {
   const currentIdx = current
     ? PHASES.findIndex((p) => p.key === current)
     : -1;
+  const stalled = state === "stalled";
   return (
     <ol className="flex items-center gap-2">
       {PHASES.map((p, i) => {
@@ -24,7 +33,9 @@ export function PhaseProgress({ current }: { current: string | null }) {
                 done
                   ? "bg-emerald-500 text-white"
                   : active
-                    ? "bg-accent text-white animate-pulse"
+                    ? stalled
+                      ? "bg-amber-500 text-white"
+                      : "bg-accent text-white animate-pulse"
                     : "bg-bg-2 text-text-3",
               ].join(" ")}
             >

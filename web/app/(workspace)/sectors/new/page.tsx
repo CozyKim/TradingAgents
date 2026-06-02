@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  cancelTrendingScan,
   createSector,
   getTrendingScan,
   listTrendingScans,
@@ -12,6 +13,7 @@ import {
   startTrendingScan,
   type TrendingSector,
 } from "@/lib/sectors";
+import { STALL_MS } from "@/lib/run-liveness";
 
 export default function NewSectorPage() {
   const router = useRouter();
@@ -25,8 +27,15 @@ export default function NewSectorPage() {
   const [scanning, setScanning] = useState(false);
   const [scanStage, setScanStage] = useState<string>("");
   const [scanError, setScanError] = useState<string | null>(null);
+  const [scanStalled, setScanStalled] = useState(false);
   const [selectedScanId, setSelectedScanId] = useState<number | null>(null);
   const cancelStreamRef = useRef<(() => void) | null>(null);
+  const jobIdRef = useRef<string | null>(null);
+  const lastSignalRef = useRef<number>(0);
+  // Bumped on every scan start AND every cancel, so an in-flight
+  // startTrendingScan() whose await resolves after a cancel can tell it was
+  // superseded and avoid opening a stream / leaving the job running.
+  const scanGenRef = useRef(0);
 
   // Saved scan versions (newest first). Drives the version selector + restore.
   const scans = useQuery({
@@ -47,23 +56,45 @@ export default function NewSectorPage() {
 
   async function onScan() {
     cancelStreamRef.current?.();
+    const gen = ++scanGenRef.current;
     setScanning(true);
     setScanError(null);
+    setScanStalled(false);
+    lastSignalRef.current = Date.now();
     try {
       const { job_id } = await startTrendingScan();
+      if (scanGenRef.current !== gen) {
+        // A cancel (or a newer scan) fired while this request was in flight —
+        // cancel the just-started job server-side and don't open a stream.
+        cancelTrendingScan(job_id).catch(() => {});
+        return;
+      }
+      jobIdRef.current = job_id;
       cancelStreamRef.current = openTrendingStream(job_id, {
-        onProgress: (d) => setScanStage(d.message ?? d.stage ?? ""),
+        onProgress: (d) => {
+          lastSignalRef.current = Date.now();
+          setScanStalled(false);
+          setScanStage(d.message ?? d.stage ?? "");
+        },
+        onHeartbeat: () => {
+          lastSignalRef.current = Date.now();
+          setScanStalled(false);
+        },
         onDone: async (_sectors, scanId) => {
           setScanning(false);
-          // Refresh the version list, then select the freshly saved scan.
           await qc.invalidateQueries({ queryKey: ["trending-scans"] });
           if (scanId != null) {
             setSelectedScanId(scanId);
           } else {
-            // 빈 결과는 저장되지 않아 scan_id가 없다 — 완료됐지만 표시할 게
-            // 없음을 알려, "한 번도 안 누름"과 구분한다.
-            setScanError("이번 추천에서는 새로운 핫 섹터를 찾지 못했습니다. 잠시 후 다시 시도해 주세요.");
+            setScanError(
+              "이번 추천에서는 새로운 핫 섹터를 찾지 못했습니다. 잠시 후 다시 시도해 주세요.",
+            );
           }
+        },
+        onCancelled: () => {
+          setScanning(false);
+          setScanStage("");
+          setScanStalled(false);
         },
         onError: (msg) => {
           setScanError(msg);
@@ -71,12 +102,51 @@ export default function NewSectorPage() {
         },
       });
     } catch (err) {
+      if (scanGenRef.current !== gen) return; // superseded — ignore
       setScanError(err instanceof Error ? err.message : "추천 실패");
       setScanning(false);
     }
   }
 
+  function teardownScan() {
+    cancelStreamRef.current?.();
+    setScanning(false);
+    setScanStage("");
+    setScanStalled(false);
+  }
+
+  async function onCancelScan() {
+    // Invalidate any in-flight onScan() so its resolved job gets auto-cancelled
+    // instead of opening a stream after the user already cancelled.
+    scanGenRef.current++;
+    const jobId = jobIdRef.current;
+    if (!jobId) {
+      // 서버측 잡이 아직 없으면 화면만 정리한다.
+      teardownScan();
+      return;
+    }
+    try {
+      await cancelTrendingScan(jobId);
+    } catch (err) {
+      // 백엔드 취소가 실패하면 스트림/진행 상태를 그대로 둬 잡을 방치하지 않고,
+      // 오류를 노출해 재시도할 수 있게 한다.
+      setScanError(err instanceof Error ? err.message : "취소 실패");
+      return;
+    }
+    // 취소 수락됨(`cancelled` SSE 이벤트도 곧 도착). 화면을 정리한다.
+    teardownScan();
+  }
+
   useEffect(() => () => cancelStreamRef.current?.(), []);
+
+  // While scanning, flip to "응답 없음" if no signal arrives for STALL_MS.
+  useEffect(() => {
+    if (!scanning) return;
+    const id = setInterval(() => {
+      if (Date.now() - lastSignalRef.current > STALL_MS) setScanStalled(true);
+    }, 1_000);
+    return () => clearInterval(id);
+  }, [scanning]);
 
   function applyTrending(s: TrendingSector) {
     setName(s.name);
@@ -117,14 +187,26 @@ export default function NewSectorPage() {
               한국·미국 커뮤니티와 최신 뉴스를 분석해 뜨는 테마를 찾아줍니다.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onScan}
-            disabled={scanning}
-            className="shrink-0 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-          >
-            {scanning ? `분석 중… ${scanStage}` : "🔥 핫 섹터 추천받기"}
-          </button>
+          {scanning ? (
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="text-sm text-text-3">분석 중… {scanStage}</span>
+              <button
+                type="button"
+                onClick={onCancelScan}
+                className="rounded-lg border border-border-1 px-3 py-2 text-sm text-text-1 hover:bg-bg-2"
+              >
+                취소
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onScan}
+              className="shrink-0 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+            >
+              🔥 핫 섹터 추천받기
+            </button>
+          )}
         </div>
 
         {(scans.data?.length ?? 0) > 0 && (
@@ -145,6 +227,11 @@ export default function NewSectorPage() {
           </div>
         )}
 
+        {scanning && scanStalled && (
+          <p className="mt-3 text-sm text-amber-600">
+            응답이 없습니다. 추천이 멈췄을 수 있어요. "취소" 후 다시 시도해 주세요.
+          </p>
+        )}
         {scanError && <p className="mt-3 text-sm text-signal-buy">{scanError}</p>}
 
         {!scanning && !scanError && (scans.data?.length ?? 0) === 0 && (
