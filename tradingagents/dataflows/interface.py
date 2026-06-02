@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 # Import from vendor-specific modules
@@ -24,12 +25,14 @@ from .alpha_vantage import (
 )
 from .alpha_vantage_common import AlphaVantageRateLimitError
 from .finnhub_social import get_social_sentiment_finnhub
-from .finnhub_common import FinnhubRateLimitError
+from .finnhub_common import FinnhubAuthError, FinnhubRateLimitError
 from .naver_finance_board import get_social_messages_naver
 from .stocktwits import get_social_messages_stocktwits
 
 # Configuration and routing logic
 from .config import get_config
+
+_log = logging.getLogger(__name__)
 
 # Tools organized by category
 TOOLS_CATEGORIES = {
@@ -199,6 +202,7 @@ def route_to_vendor(method: str, *args, **kwargs):
             fallback_vendors.append(vendor)
 
     ticker = args[0] if args else None
+    last_error: Exception | None = None
 
     for vendor in fallback_vendors:
         if vendor not in VENDOR_METHODS[method]:
@@ -213,7 +217,30 @@ def route_to_vendor(method: str, *args, **kwargs):
 
         try:
             return impl_func(*args, **kwargs)
-        except (AlphaVantageRateLimitError, FinnhubRateLimitError):
-            continue  # Only rate limits trigger fallback
+        except (
+            AlphaVantageRateLimitError,
+            FinnhubRateLimitError,
+            FinnhubAuthError,
+        ) as exc:
+            # Non-fatal vendor failures — rate limits (429) and auth/permission
+            # errors (401/403: premium-only endpoint, missing/invalid key).
+            # Fall through to the next vendor instead of aborting the run.
+            last_error = exc
+            _log.warning(
+                "vendor '%s' failed for '%s' (%s); trying next vendor",
+                vendor,
+                method,
+                exc,
+            )
+            continue
 
-    raise RuntimeError(f"No available vendor for '{method}'")
+    # No vendor could serve the request. Return an LLM-readable notice rather
+    # than raising, so one unavailable data source degrades gracefully instead
+    # of killing the whole multi-agent run.
+    detail = f" (last error: {last_error})" if last_error is not None else ""
+    _log.warning("no available vendor for '%s'%s", method, detail)
+    return (
+        f"Data for '{method}' is currently unavailable from all configured "
+        f"vendors{detail}. Continue your analysis using other available "
+        f"information and note this gap."
+    )

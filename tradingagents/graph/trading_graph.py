@@ -158,7 +158,14 @@ class TradingAgentsGraph:
         return kwargs
 
     def _create_tool_nodes(self) -> Dict[str, ToolNode]:
-        """Create tool nodes for different data sources using abstract methods."""
+        """Create tool nodes for different data sources using abstract methods.
+
+        ``handle_tool_errors=True`` turns any tool exception into a ToolMessage
+        the agent can read and work around, instead of letting it bubble up and
+        kill the whole multi-agent run. The data layer already degrades data
+        outages to plain strings (see ``route_to_vendor``); this is the
+        defense-in-depth net for any other unexpected tool error.
+        """
         return {
             "market": ToolNode(
                 [
@@ -166,13 +173,15 @@ class TradingAgentsGraph:
                     get_stock_data,
                     # Technical indicators
                     get_indicators,
-                ]
+                ],
+                handle_tool_errors=True,
             ),
             "social": ToolNode(
                 [
                     get_social_sentiment,
                     get_social_messages,
-                ]
+                ],
+                handle_tool_errors=True,
             ),
             "news": ToolNode(
                 [
@@ -180,7 +189,8 @@ class TradingAgentsGraph:
                     get_news,
                     get_global_news,
                     get_insider_transactions,
-                ]
+                ],
+                handle_tool_errors=True,
             ),
             "fundamentals": ToolNode(
                 [
@@ -189,7 +199,8 @@ class TradingAgentsGraph:
                     get_balance_sheet,
                     get_cashflow,
                     get_income_statement,
-                ]
+                ],
+                handle_tool_errors=True,
             ),
         }
 
