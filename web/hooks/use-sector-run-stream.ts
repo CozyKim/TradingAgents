@@ -61,11 +61,18 @@ const INIT: InternalState = {
  * Returns one of running/stalled/completed/failed/cancelled plus elapsed and
  * last-signal timings. A 1s tick re-evaluates the stall timer until a terminal
  * event arrives.
+ *
+ * `startedAtMs` anchors the elapsed timer to the run's real start time (epoch
+ * ms, from the backend `started_at`). Pass it so elapsed reflects the actual
+ * analysis duration and keeps counting when the user navigates away and back —
+ * without it the timer would restart from 0 on every remount. Falls back to
+ * mount time when omitted (e.g. the start time isn't known yet).
  */
 export function useSectorRunStream(
   sectorId: number | undefined,
   runId: string | undefined,
   enabled: boolean,
+  startedAtMs?: number,
 ): SectorRunStream {
   const [s, dispatch] = useReducer(reducer, INIT);
   const terminalRef = useRef<TerminalState>(null);
@@ -105,10 +112,16 @@ export function useSectorRunStream(
     now: s.now,
     terminal: s.terminal,
   });
+  // Anchor elapsed to the backend start time when known, so it survives
+  // remounts; fall back to the local mount time otherwise.
+  const elapsedBase =
+    startedAtMs != null && Number.isFinite(startedAtMs)
+      ? startedAtMs
+      : s.startedAt;
   return {
     phase: s.phase,
     state,
-    elapsedMs: Math.max(0, s.now - s.startedAt),
+    elapsedMs: Math.max(0, s.now - elapsedBase),
     lastSignalAgoMs: Math.max(0, s.now - s.lastSignalAt),
     error: s.error,
   };

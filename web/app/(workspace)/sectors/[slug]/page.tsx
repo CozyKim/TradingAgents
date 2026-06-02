@@ -62,10 +62,16 @@ export default function SectorDetailPage() {
   });
 
   const activeRunId = activeRun.data?.id;
+  // Anchor the elapsed timer to the run's real start so it keeps counting when
+  // the user navigates away and back (instead of restarting from 0).
+  const activeStartedAtMs = activeRun.data?.started_at
+    ? new Date(activeRun.data.started_at).getTime()
+    : undefined;
   const stream = useSectorRunStream(
     sector.data?.id,
     activeRunId,
     !!activeRun.data,
+    activeStartedAtMs,
   );
 
   // React to terminal stream states: refresh queries + surface an outcome.

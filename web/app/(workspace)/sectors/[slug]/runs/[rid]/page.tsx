@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 
 import { PhaseProgress } from "@/components/sector/phase-progress";
 import { useSectorRunStream } from "@/hooks/use-sector-run-stream";
-import { cancelSectorRun, getSectorBySlug } from "@/lib/sectors";
+import { cancelSectorRun, getActiveRun, getSectorBySlug } from "@/lib/sectors";
 
 export default function SectorRunPage() {
   // Next.js 14.2.x — params is a plain object via useParams(), not a Promise.
@@ -21,7 +21,19 @@ export default function SectorRunPage() {
   });
   const sectorId = sector.data?.id;
 
-  const stream = useSectorRunStream(sectorId, rid, !!sectorId);
+  // Fetch the active run only to learn its real start time, so the elapsed
+  // timer is anchored to the analysis start and survives re-entry.
+  const activeRun = useQuery({
+    queryKey: ["sector-active-run", sectorId],
+    queryFn: () => getActiveRun(sectorId!),
+    enabled: sectorId != null,
+  });
+  const startedAtMs =
+    activeRun.data?.id === rid && activeRun.data?.started_at
+      ? new Date(activeRun.data.started_at).getTime()
+      : undefined;
+
+  const stream = useSectorRunStream(sectorId, rid, !!sectorId, startedAtMs);
 
   // On completion, refresh report queries then bounce back to the detail page.
   useEffect(() => {
