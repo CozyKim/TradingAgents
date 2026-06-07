@@ -27,7 +27,7 @@
 
 # TradingAgents: Multi-Agents LLM Financial Trading Framework
 
-> **Fork note (CozyKim/TradingAgents):** 이 포크는 업스트림 CLI 위에 FastAPI 백엔드(`tradingagents_web/`)와 Next.js Toss 스타일 워크스페이스(`web/`)를 얹은 개인용 분석 워크벤치예요. 포트폴리오 모니터링, cron 기반 자동 분석, 알림(in-app + Telegram), 분석 비교 뷰, PWA, SQLite 백업/복원을 함께 제공합니다. 셋업·운영 가이드는 [`DEV.md`](./DEV.md)에 정리해 두었습니다.
+> **Fork note (CozyKim/TradingAgents):** 이 포크는 업스트림 CLI 위에 FastAPI 백엔드(`tradingagents_web/`)와 Next.js Toss 스타일 워크스페이스(`web/`)를 얹은 개인용 분석 워크벤치예요. 포트폴리오 모니터링, 관심종목, cron 기반 자동 분석, 알림(in-app + Telegram), 산업/섹터 분석, 분석 비교 뷰, PWA, SQLite 백업/복원을 함께 제공합니다. 셋업·운영 가이드는 [`DEV.md`](./DEV.md)에 정리해 두었습니다.
 
 ## Web Workspace (this fork)
 
@@ -46,6 +46,14 @@
   <img src="assets/web/portfolio-detail.png" alt="포트폴리오 상세 — 90일 캔들과 분석 히스토리" width="48%">
 </p>
 
+### Watchlist · 관심종목
+
+스케줄에 등록된 모든 종목을 한곳에 모아 봅니다. 보유 종목 모니터링과 cron 예약으로 쌓인 티커가 자동으로 관심종목이 되고, 종목을 누르면 90일 캔들과 분석 히스토리가 있는 상세로 바로 이동해요(포트폴리오 보유 여부와 무관하게 추적 가능).
+
+<p align="center">
+  <img src="assets/web/watchlist.png" alt="관심종목 — 스케줄 파생 추적 종목 목록" width="80%">
+</p>
+
 ### Run · History · Compare
 
 티커와 분석가(4종), 토론 라운드 수를 골라 분석을 실행하면 SSE로 phase별 진행 상황을 실시간으로 보여줍니다. 완료된 분석은 Market / Sentiment / News / Fundamentals 보고서로 정리되며, 두 건을 고르면 좌우로 나란히 비교할 수 있어요.
@@ -59,6 +67,10 @@
   <img src="assets/web/history-list.png"    alt="분석 기록 — 티커·상태·결정으로 필터링" width="48%">
   <img src="assets/web/history-compare.png" alt="비교 — A/B 좌우 비교" width="48%">
 </p>
+
+### 한국 종목 (KRX)
+
+`.KS`(코스피)·`.KQ`(코스닥) 티커를 그대로 분석할 수 있어요. 한국 종목은 가격을 **원화로 인식·환산**해 표기하고(사이드바의 표시 통화 USD/KRW 토글), 소셜 감성 분석은 미국 종목의 Reddit/StockTwits 대신 **네이버 종목토론방**(기본 조회순)에서 의견을 수집합니다.
 
 ### Schedules · Alerts · Notifications
 
@@ -75,9 +87,20 @@ cron 식으로 자동 분석을 예약할 수 있어요. monitor가 켜진 보�
 
 ### Sectors — 산업/섹터 분석 (M6)
 
-AI · 전력 · 반도체(메모리/비메모리) · 로봇 · 우주 같은 산업을 선택하면 4단계 LangGraph 그래프가 거시 환경 → 가치사슬 → 경쟁 구도 → 투자 전망 보고서를 생성합니다. 가치사슬은 mermaid 다이어그램, 단계별 기업 점유율은 **공시/추정/불명 배지 + 출처 URL**로 분리되어 어떤 수치가 어느 정도 신뢰할 수 있는지 한눈에 보입니다. 후보 종목 카드의 "종목 분석" 버튼이 기존 `/run` 폼으로 prefill되어 산업 → 종목 드릴다운이 자연스럽게 이어집니다.
+AI · 전력 · 반도체(메모리/비메모리) · 로봇 · 우주 같은 산업을 선택하면 4단계 LangGraph 그래프가 거시 환경 → 가치사슬 → 경쟁 구도 → 투자 전망 보고서를 생성합니다. 가치사슬은 mermaid 다이어그램, 단계별 기업 점유율은 **공시/추정/불명 배지 + 출처 URL**로 분리되어 어떤 수치가 어느 정도 신뢰할 수 있는지 한눈에 보입니다. 후보 종목 카드는 티커가 어느 시장(🇺🇸/🇰🇷) 소속인지 **마켓 배지**로 보여 주고, "종목 분석" 버튼이 기존 `/run` 폼으로 prefill되어 산업 → 종목 드릴다운이 자연스럽게 이어집니다.
 
-웹 검색은 Tavily(`TAVILY_API_KEY`)를 사용하며 노드당 3회·전체 12회 호출 가드로 비용 폭주를 막습니다. `WEB_FAKE_RUNNER=true`로 LLM/Tavily 호출 없이 흐름 검증 가능. 현재 실제 LLM 와이어링은 후속 작업으로 분리되어 있어 `WEB_FAKE_RUNNER`가 꺼진 상태에서 분석을 시작하면 명시적 503으로 거부됩니다(silent 실패 방지).
+<p align="center">
+  <img src="assets/web/sectors-list.png"  alt="산업·섹터 목록 — 프리셋 + 사용자 정의 섹터" width="48%">
+  <img src="assets/web/sector-detail.png" alt="섹터 상세 — 가치사슬·점유율·후보 종목 마켓 배지" width="48%">
+</p>
+
+분석할 산업이 떠오르지 않으면 **"🔥 핫 섹터 추천받기"**로 한국·미국 커뮤니티와 최신 뉴스에서 뜨는 테마를 자동으로 발굴할 수 있어요. 스캔 결과는 핫니스 점수와 함께 카드로 제시되고 매번 버전으로 저장되어, **버전 선택기**로 과거 스캔을 다시 불러올 수 있습니다. 카드의 "이 섹터로 만들기"를 누르면 이름·키워드가 그대로 prefill됩니다.
+
+<p align="center">
+  <img src="assets/web/sectors-trending.png" alt="핫 섹터 추천 — 트렌딩 스캔 결과와 버전 선택기" width="60%">
+</p>
+
+웹 검색은 Tavily(`TAVILY_API_KEY`)를 사용하며 노드당 3회·전체 12회 호출 가드로 비용 폭주를 막습니다. `WEB_FAKE_RUNNER=true`로 LLM/Tavily 호출 없이 흐름 검증 가능. 현재 실제 LLM 와이어링은 후속 작업으로 분리되어 있어 `WEB_FAKE_RUNNER`가 꺼진 상태에서 분석을 시작하면 명시적 503으로 거부됩니다(silent 실패 방지). 진행 중인 분석/스캔은 heartbeat로 생존 여부를 추적해 **정체(stall) 감지 시 경고와 취소 버튼**을 노출합니다.
 
 ### Mobile (installable PWA)
 
@@ -105,6 +128,7 @@ Docker, Telegram 봇 연결, E2E 격리 DB, SQLite 백업·복원 같은 상세 
 ---
 
 ## News
+- [2026-06] **Fork: 관심종목 · 트렌딩 섹터 · 한국 종목** — 스케줄 파생 관심종목 페이지, "핫 섹터 추천받기" 트렌딩 스캔 + 스캔 버전 관리, 섹터 진행 상황 stall 감지·취소, 후보 종목 마켓 배지, 한국 종목(`.KS`/`.KQ`) 원화 환산 및 네이버 종목토론방 감성 분석을 추가.
 - [2026-05] **Fork: Toss-style UI rebrand** — 워크스페이스 전반(대시보드/포트폴리오/스케줄/알림)을 Toss 스타일로 리디자인하고 `TickerCombobox` 기반의 한글·영문 통합 티커 검색을 도입.
 - [2026-04] **Fork: Web app M2 → M5** — FastAPI + Next.js 14 워크스페이스 추가. M2 Run/History(SSE 진행 표시), M3 Portfolio + APScheduler cron 자동 분석, M4 Alerts(in-app + Telegram), M5 Polish(PWA, History 비교 뷰, Account 백업/복원).
 - [2026-03] **TradingAgents v0.2.3** released with multi-language support, GPT-5.4 family models, unified model catalog, backtesting date fidelity, and proxy support.
