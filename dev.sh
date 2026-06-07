@@ -96,7 +96,7 @@ echo
 # 백엔드 (stdout/stderr는 prefix를 붙여 콘솔 + 파일 양쪽으로)
 (
   cd "${ROOT_DIR}"
-  uv run uvicorn tradingagents_web.main:app --reload --port "${BACKEND_PORT}" 2>&1 \
+  uv run uvicorn tradingagents_web.main:app --reload --reload-dir "${ROOT_DIR}/tradingagents" --port "${BACKEND_PORT}" 2>&1 \
     | tee "${LOG_DIR}/backend.log" \
     | sed -u 's/^/[backend] /'
 ) &
