@@ -17,6 +17,7 @@ from tradingagents.graph_sector.state import SectorState
 
 # SearchBudget is constructed inside SectorState.from_request() — no direct
 # import here. We reuse state.budget so env vars actually take effect.
+from tradingagents_web.services.concurrency import analysis_slot
 from tradingagents_web.services.event_bus import AnalysisEvent, EventBus
 from tradingagents_web.services.sector_fake_runner import (
     SectorRunRequest,
@@ -86,21 +87,24 @@ class RealSectorRunner:
         final_state: dict[str, Any] | None = None
 
         try:
-            async for chunk in graph.astream(state):
-                # chunk format: {node_name: state_partial}
-                for node_name, partial in chunk.items():
-                    phase = _NODE_TO_PHASE.get(node_name)
-                    if phase and phase not in seen_phases:
-                        seen_phases.add(phase)
-                        self.bus.publish(
-                            request.run_id,
-                            AnalysisEvent(
-                                type="progress",
-                                data=sector_progress_payload(phase),
-                            ),
-                        )
-                    if partial:
-                        final_state = {**(final_state or {}), **partial}
+            # Cap concurrent graph runs so sector fan-out + parallel runs cannot
+            # exhaust the per-process fd limit (see services.concurrency).
+            async with analysis_slot():
+                async for chunk in graph.astream(state):
+                    # chunk format: {node_name: state_partial}
+                    for node_name, partial in chunk.items():
+                        phase = _NODE_TO_PHASE.get(node_name)
+                        if phase and phase not in seen_phases:
+                            seen_phases.add(phase)
+                            self.bus.publish(
+                                request.run_id,
+                                AnalysisEvent(
+                                    type="progress",
+                                    data=sector_progress_payload(phase),
+                                ),
+                            )
+                        if partial:
+                            final_state = {**(final_state or {}), **partial}
         except Exception as exc:
             logger.exception("sector_runner: graph failed")
             self.bus.publish(

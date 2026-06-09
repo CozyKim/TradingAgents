@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Awaitable, Callable, Protocol
 
+from tradingagents_web.services.concurrency import analysis_slot
 from tradingagents_web.services.event_bus import AnalysisEvent, EventBus
 
 logger = logging.getLogger(__name__)
@@ -363,7 +364,10 @@ class RealRunner:
             return accumulated
 
         try:
-            final_state = await asyncio.to_thread(_build_and_stream)
+            # Cap concurrent graph runs so parallel runs/sector fan-out cannot
+            # exhaust the per-process fd limit (see services.concurrency).
+            async with analysis_slot():
+                final_state = await asyncio.to_thread(_build_and_stream)
             decision_text = str(final_state.get("final_trade_decision") or "")
             decision = _extract_decision(decision_text)
             safe_final_state = _json_safe_final_state(final_state)
