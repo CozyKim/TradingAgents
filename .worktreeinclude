@@ -1,0 +1,6 @@
+# Files copied into each new Claude Code worktree.
+# Worktrees start from a clean git checkout, so gitignored local config is
+# absent by default. Without .env, in-worktree runs lose credentials like
+# FINNHUB_API_KEY and dotenv-based config (this caused a spurious
+# FinnhubAuthError during an fd probe on 2026-06-09). List one path per line.
+.env
