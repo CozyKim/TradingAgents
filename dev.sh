@@ -87,6 +87,14 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# ── fd 한도 ───────────────────────────────────────────────────────────
+# macOS 기본 soft limit(256)은 yfinance 연결 캐시 + 동시 분석 그래프에
+# 부족해 fd 고갈 → 프록시 ECONNRESET을 일으켰다(2026-06-11). 세션 공유
+# 수정으로 평시 사용량은 낮아졌지만 여유분을 확보해 둔다.
+if ! ulimit -n 8192 2>/dev/null; then
+  echo "[dev.sh] 경고: ulimit -n 8192 설정 실패 (현재: $(ulimit -n))" >&2
+fi
+
 # ── 실행 ──────────────────────────────────────────────────────────────
 echo "[dev.sh] WEB_FAKE_RUNNER=${WEB_FAKE_RUNNER}"
 echo "[dev.sh] backend → http://localhost:${BACKEND_PORT}  (logs: ${LOG_DIR}/backend.log)"

@@ -16,6 +16,7 @@ from typing import Any
 import pandas as pd
 
 from tradingagents.dataflows._yf_lock import YF_LOCK as _YF_LOCK
+from tradingagents.dataflows._yf_lock import ensure_shared_yf_session
 from tradingagents_web.schemas.price import PriceHistoryResponse, PricePoint
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,7 @@ def _yf_download(
     """
     import yfinance as yf
 
+    ensure_shared_yf_session()
     with _YF_LOCK:
         return yf.download(
             ticker,

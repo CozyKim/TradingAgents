@@ -254,7 +254,11 @@ def _build_trending_finder(bus: EventBus):
     def momentum_fn(ticker: str) -> dict:
         import yfinance as yf
 
-        hist = yf.Ticker(ticker).history(period="1mo")
+        from tradingagents.dataflows.stockstats_utils import yf_retry
+
+        # yf_retry serializes via YF_LOCK — required for the shared
+        # single-Curl yfinance session (see dataflows._yf_lock).
+        hist = yf_retry(lambda: yf.Ticker(ticker).history(period="1mo"))
         if hist.empty or len(hist) < 6:
             return {"avg_return_pct": 0.0}
         recent = hist["Close"].iloc[-1]

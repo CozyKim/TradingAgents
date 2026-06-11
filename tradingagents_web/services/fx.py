@@ -12,7 +12,7 @@ import time
 from datetime import date, datetime, timezone
 from typing import Any
 
-from tradingagents.dataflows._yf_lock import YF_LOCK
+from tradingagents.dataflows._yf_lock import YF_LOCK, ensure_shared_yf_session
 from tradingagents_web.schemas.fx import FxRate
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,7 @@ def _yf_download(ticker: str, period: str = "5d", interval: str = "1d") -> Any:
     """
     import yfinance as yf
 
+    ensure_shared_yf_session()
     with YF_LOCK:
         return yf.download(
             ticker,

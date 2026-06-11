@@ -5,24 +5,34 @@ import pandas as pd
 import yfinance as yf
 from yfinance.exceptions import YFRateLimitError
 from stockstats import wrap
-from typing import Annotated
+from collections.abc import Callable
+from typing import Annotated, TypeVar
 import os
 from .config import get_config
-from ._yf_lock import YF_LOCK
+from ._yf_lock import YF_LOCK, ensure_shared_yf_session
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T")
 
-def yf_retry(func, max_retries=3, base_delay=2.0):
-    """Execute a yfinance call with exponential backoff on rate limits.
+
+def yf_retry(func: Callable[[], T], max_retries: int = 3, base_delay: float = 2.0) -> T:
+    """Execute a yfinance call serialized by YF_LOCK, with 429 backoff.
 
     yfinance raises YFRateLimitError on HTTP 429 responses but does not
     retry them internally. This wrapper adds retry logic specifically
     for rate limits. Other exceptions propagate immediately.
+
+    The shared single-Curl session (see ``_yf_lock``) is unsafe under
+    concurrent use, so the lock is acquired here — callers must NOT hold
+    YF_LOCK around yf_retry (it is non-reentrant). Backoff sleeps happen
+    outside the lock so other callers can proceed.
     """
+    ensure_shared_yf_session()
     for attempt in range(max_retries + 1):
         try:
-            return func()
+            with YF_LOCK:
+                return func()
         except YFRateLimitError:
             if attempt < max_retries:
                 delay = base_delay * (2 ** attempt)
@@ -30,6 +40,7 @@ def yf_retry(func, max_retries=3, base_delay=2.0):
                 time.sleep(delay)
             else:
                 raise
+    raise AssertionError("unreachable: final attempt either returns or raises")
 
 
 def _clean_dataframe(data: pd.DataFrame) -> pd.DataFrame:
@@ -103,19 +114,18 @@ def load_ohlcv(symbol: str, curr_date: str) -> pd.DataFrame:
             data = cached
 
     if data is None:
-        # YF_LOCK is shared with the web price/fx services. yfinance is not
-        # thread-safe — its module-level shared._DFS leaks between concurrent
-        # callers, which previously caused holdings prices to silently swap
-        # across tickers when an analysis run overlapped a portfolio fetch.
-        with YF_LOCK:
-            raw = yf_retry(lambda: yf.download(
-                symbol,
-                start=start_str,
-                end=end_str,
-                multi_level_index=False,
-                progress=False,
-                auto_adjust=True,
-            ))
+        # Serialization against the web price/fx services happens inside
+        # yf_retry via the shared YF_LOCK — yfinance is not thread-safe
+        # (module-level shared._DFS leaks between concurrent callers), and
+        # the shared single-Curl session must never be used concurrently.
+        raw = yf_retry(lambda: yf.download(
+            symbol,
+            start=start_str,
+            end=end_str,
+            multi_level_index=False,
+            progress=False,
+            auto_adjust=True,
+        ))
         if raw is None or raw.empty:
             logger.warning(
                 "yfinance returned no rows for %s [%s..%s]; skipping cache write",
