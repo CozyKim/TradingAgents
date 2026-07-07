@@ -122,7 +122,7 @@ export default function DashboardPage() {
               }}
               data-testid="net-worth"
               data-hidden={hidden ? "true" : "false"}
-              aria-label={hidden ? "자산 금액 잠깐 보기" : "내 자산 금액"}
+              aria-label={hidden ? "자산 금액 잠깐 보기" : undefined}
               className={cn(
                 "text-left text-text-1",
                 hidden ? "cursor-pointer" : "cursor-default",
