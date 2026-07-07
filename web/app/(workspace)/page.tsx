@@ -12,6 +12,9 @@ import { getPriceHistory } from "@/lib/prices";
 import { RunListItem } from "@/lib/runs";
 import { useCurrency, formatPrice } from "@/lib/currency";
 import { computePortfolioTotals } from "@/lib/portfolio-totals";
+import { useHideBalance } from "@/hooks/use-hide-balance";
+import { MASK, maskMoney } from "@/lib/hide-balance";
+import { BalanceEyeIcon } from "@/components/dashboard/balance-eye-icon";
 
 export default function DashboardPage() {
   const { data: holdings } = useHoldings();
@@ -65,6 +68,8 @@ export default function DashboardPage() {
   // totals는 USD 기준 합계이므로 sourceCurrency="USD"로 표시 통화에 맞게 환산한다.
   const fmtMoney = (n: number | null) => formatPrice(n, "USD", ctx);
 
+  const { hidden, revealed, toggle, peek } = useHideBalance();
+
   const pnlTone =
     totals.pnl == null ? "neutral" : totals.pnl >= 0 ? "pos" : "neg";
 
@@ -86,9 +91,20 @@ export default function DashboardPage() {
       <section className="mb-5 overflow-hidden rounded-2xl bg-bg-1 shadow-card">
         <div className="px-5 pt-5 pb-4">
           <div className="flex items-center justify-between">
-            <span className="text-[13px] font-semibold text-text-3">
-              내 자산
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[13px] font-semibold text-text-3">
+                내 자산
+              </span>
+              <button
+                type="button"
+                onClick={toggle}
+                aria-pressed={revealed}
+                aria-label={revealed ? "자산 금액 숨기기" : "자산 금액 표시"}
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-3 hover:bg-bg-2 hover:text-text-1"
+              >
+                <BalanceEyeIcon hidden={hidden} className="h-4 w-4" />
+              </button>
+            </div>
             <Link
               href="/portfolio"
               className="inline-flex items-center gap-0.5 rounded-lg px-2 py-1 text-[12.5px] font-semibold text-text-3 hover:bg-bg-2 hover:text-text-1"
@@ -98,36 +114,57 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="font-num mt-2 text-[36px] font-extrabold leading-none tracking-[-0.035em] text-text-1 md:text-[42px]">
-            {fmtMoney(totals.value)}
+            {hidden ? (
+              <button
+                type="button"
+                onClick={peek}
+                data-testid="net-worth"
+                aria-label="자산 금액 잠깐 보기"
+                className="cursor-pointer tracking-[0.15em] text-text-1"
+              >
+                {MASK}
+              </button>
+            ) : (
+              <span data-testid="net-worth">{fmtMoney(totals.value)}</span>
+            )}
           </div>
           <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
             {totals.pnl != null ? (
-              <>
-                <span
-                  className={
-                    pnlTone === "pos"
-                      ? "font-num text-[15px] font-bold text-signal-buy"
-                      : pnlTone === "neg"
-                        ? "font-num text-[15px] font-bold text-signal-sell"
-                        : "font-num text-[15px] font-bold text-text-2"
-                  }
-                >
-                  {formatPrice(totals.pnl, "USD", ctx, { signed: true })}
-                </span>
-                {totals.pnlPct != null && (
+              hidden ? (
+                <>
+                  <span className="font-num text-[15px] font-bold text-text-3">
+                    {MASK}
+                  </span>
+                  <span className="text-[12.5px] text-text-3">평가손익</span>
+                </>
+              ) : (
+                <>
                   <span
                     className={
                       pnlTone === "pos"
-                        ? "font-num text-[13px] font-semibold text-signal-buy"
-                        : "font-num text-[13px] font-semibold text-signal-sell"
+                        ? "font-num text-[15px] font-bold text-signal-buy"
+                        : pnlTone === "neg"
+                          ? "font-num text-[15px] font-bold text-signal-sell"
+                          : "font-num text-[15px] font-bold text-text-2"
                     }
                   >
-                    ({totals.pnl >= 0 ? "+" : ""}
-                    {totals.pnlPct.toFixed(2)}%)
+                    {formatPrice(totals.pnl, "USD", ctx, { signed: true })}
                   </span>
-                )}
-                <span className="text-[12.5px] text-text-3">평가손익</span>
-              </>
+                  {totals.pnlPct != null && (
+                    <span
+                      className={
+                        pnlTone === "pos"
+                          ? "font-num text-[13px] font-semibold text-signal-buy"
+                          : "font-num text-[13px] font-semibold text-signal-sell"
+                      }
+                    >
+                      ({totals.pnl >= 0 ? "+" : ""}
+                      {totals.pnlPct.toFixed(2)}%)
+                    </span>
+                  )}
+                  <span className="text-[12.5px] text-text-3">평가손익</span>
+                </>
+              )
             ) : (
               <span className="text-[13px] text-text-3">
                 실시간 가격을 불러오는 중…
@@ -140,7 +177,7 @@ export default function DashboardPage() {
           <div className="flex flex-col gap-0.5 bg-bg-1 px-5 py-3.5">
             <dt className="text-[12px] font-semibold text-text-3">매입 원가</dt>
             <dd className="font-num text-[15px] font-bold tracking-[-0.02em] text-text-1">
-              {fmtMoney(totals.cost)}
+              {maskMoney(hidden, fmtMoney(totals.cost))}
             </dd>
           </div>
           <div className="flex flex-col gap-0.5 bg-bg-1 px-5 py-3.5">
@@ -200,18 +237,21 @@ export default function DashboardPage() {
       <section className="mb-5 hidden grid-cols-3 gap-3 md:grid">
         <MetricCard
           label="평가 자산"
-          value={fmtMoney(totals.value)}
-          delta={`매입 ${fmtMoney(totals.cost)}`}
+          value={maskMoney(hidden, fmtMoney(totals.value))}
+          delta={hidden ? undefined : `매입 ${fmtMoney(totals.cost)}`}
         />
         <MetricCard
           label="평가 손익"
-          value={formatPrice(totals.pnl, "USD", ctx, { signed: true })}
+          value={maskMoney(
+            hidden,
+            formatPrice(totals.pnl, "USD", ctx, { signed: true }),
+          )}
           delta={
-            totals.pnlPct == null
+            hidden || totals.pnlPct == null
               ? undefined
               : `${totals.pnl! >= 0 ? "+" : ""}${totals.pnlPct.toFixed(2)}%`
           }
-          tone={pnlTone}
+          tone={hidden ? "neutral" : pnlTone}
         />
         <MetricCard
           label="종목 / 스케줄"
