@@ -93,7 +93,9 @@ export function TickerCombobox({
     const timer = setTimeout(() => {
       setLoading(true);
       searchTickersRemote(q, controller.signal)
-        .then((remote) => setRemoteResults(remote))
+        .then((remote) => {
+          if (!controller.signal.aborted) setRemoteResults(remote);
+        })
         .catch((err: unknown) => {
           // abort 는 정상 취소이므로 무시. 그 외 실패는 원격 결과 비움(시드로 degrade).
           if ((err as { name?: string })?.name !== "AbortError") setRemoteResults([]);
