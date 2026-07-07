@@ -1,17 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { MASK, maskMoney } from "@/lib/hide-balance";
+import { balanceBlurClass } from "@/lib/hide-balance";
 
-describe("maskMoney", () => {
-  it("숨김이면 MASK를 반환한다", () => {
-    expect(maskMoney(true, "₩1,234,000")).toBe(MASK);
+describe("balanceBlurClass", () => {
+  it("숨김이면 blur/select-none 클래스를 포함한다", () => {
+    const c = balanceBlurClass(true);
+    expect(c).toContain("blur-[6px]");
+    expect(c).toContain("select-none");
   });
 
-  it("숨김이 아니면 포맷된 문자열을 그대로 반환한다", () => {
-    expect(maskMoney(false, "₩1,234,000")).toBe("₩1,234,000");
+  it("노출이면 blur 클래스를 포함하지 않는다", () => {
+    expect(balanceBlurClass(false)).not.toContain("blur-[6px]");
   });
 
-  it("숨김이면 값이 '—'여도 MASK를 반환한다", () => {
-    expect(maskMoney(true, "—")).toBe(MASK);
+  it("숨김/노출 모두 filter 전환 클래스를 포함한다", () => {
+    expect(balanceBlurClass(true)).toContain("transition-[filter]");
+    expect(balanceBlurClass(false)).toContain("transition-[filter]");
   });
 });

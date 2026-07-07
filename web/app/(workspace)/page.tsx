@@ -13,7 +13,8 @@ import { RunListItem } from "@/lib/runs";
 import { useCurrency, formatPrice } from "@/lib/currency";
 import { computePortfolioTotals } from "@/lib/portfolio-totals";
 import { useHideBalance } from "@/hooks/use-hide-balance";
-import { MASK, maskMoney } from "@/lib/hide-balance";
+import { balanceBlurClass } from "@/lib/hide-balance";
+import { cn } from "@/lib/utils";
 import { BalanceEyeIcon } from "@/components/dashboard/balance-eye-icon";
 
 export default function DashboardPage() {
@@ -119,52 +120,58 @@ export default function DashboardPage() {
                 type="button"
                 onClick={peek}
                 data-testid="net-worth"
+                data-hidden="true"
                 aria-label="자산 금액 잠깐 보기"
-                className="cursor-pointer tracking-[0.15em] text-text-1"
+                className={cn("cursor-pointer text-text-1", balanceBlurClass(true))}
               >
-                {MASK}
+                {fmtMoney(totals.value)}
               </button>
             ) : (
-              <span data-testid="net-worth">{fmtMoney(totals.value)}</span>
+              <span
+                data-testid="net-worth"
+                data-hidden="false"
+                className={cn("text-text-1", balanceBlurClass(false))}
+              >
+                {fmtMoney(totals.value)}
+              </span>
             )}
           </div>
           <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
             {totals.pnl != null ? (
-              hidden ? (
-                <>
-                  <span className="font-num text-[15px] font-bold text-text-3">
-                    {MASK}
-                  </span>
-                  <span className="text-[12.5px] text-text-3">평가손익</span>
-                </>
-              ) : (
-                <>
-                  <span
-                    className={
-                      pnlTone === "pos"
-                        ? "font-num text-[15px] font-bold text-signal-buy"
+              <>
+                <span
+                  className={cn(
+                    "font-num text-[15px] font-bold",
+                    hidden
+                      ? "text-text-3"
+                      : pnlTone === "pos"
+                        ? "text-signal-buy"
                         : pnlTone === "neg"
-                          ? "font-num text-[15px] font-bold text-signal-sell"
-                          : "font-num text-[15px] font-bold text-text-2"
-                    }
-                  >
-                    {formatPrice(totals.pnl, "USD", ctx, { signed: true })}
-                  </span>
-                  {totals.pnlPct != null && (
-                    <span
-                      className={
-                        pnlTone === "pos"
-                          ? "font-num text-[13px] font-semibold text-signal-buy"
-                          : "font-num text-[13px] font-semibold text-signal-sell"
-                      }
-                    >
-                      ({totals.pnl >= 0 ? "+" : ""}
-                      {totals.pnlPct.toFixed(2)}%)
-                    </span>
+                          ? "text-signal-sell"
+                          : "text-text-2",
+                    balanceBlurClass(hidden),
                   )}
-                  <span className="text-[12.5px] text-text-3">평가손익</span>
-                </>
-              )
+                >
+                  {formatPrice(totals.pnl, "USD", ctx, { signed: true })}
+                </span>
+                {totals.pnlPct != null && (
+                  <span
+                    className={cn(
+                      "font-num text-[13px] font-semibold",
+                      hidden
+                        ? "text-text-3"
+                        : pnlTone === "pos"
+                          ? "text-signal-buy"
+                          : "text-signal-sell",
+                      balanceBlurClass(hidden),
+                    )}
+                  >
+                    ({totals.pnl >= 0 ? "+" : ""}
+                    {totals.pnlPct.toFixed(2)}%)
+                  </span>
+                )}
+                <span className="text-[12.5px] text-text-3">평가손익</span>
+              </>
             ) : (
               <span className="text-[13px] text-text-3">
                 실시간 가격을 불러오는 중…
@@ -176,8 +183,13 @@ export default function DashboardPage() {
         <dl className="grid grid-cols-2 gap-px overflow-hidden bg-bg-0">
           <div className="flex flex-col gap-0.5 bg-bg-1 px-5 py-3.5">
             <dt className="text-[12px] font-semibold text-text-3">매입 원가</dt>
-            <dd className="font-num text-[15px] font-bold tracking-[-0.02em] text-text-1">
-              {maskMoney(hidden, fmtMoney(totals.cost))}
+            <dd
+              className={cn(
+                "font-num text-[15px] font-bold tracking-[-0.02em] text-text-1",
+                balanceBlurClass(hidden),
+              )}
+            >
+              {fmtMoney(totals.cost)}
             </dd>
           </div>
           <div className="flex flex-col gap-0.5 bg-bg-1 px-5 py-3.5">
@@ -237,21 +249,20 @@ export default function DashboardPage() {
       <section className="mb-5 hidden grid-cols-3 gap-3 md:grid">
         <MetricCard
           label="평가 자산"
-          value={maskMoney(hidden, fmtMoney(totals.value))}
-          delta={hidden ? undefined : `매입 ${fmtMoney(totals.cost)}`}
+          value={fmtMoney(totals.value)}
+          delta={`매입 ${fmtMoney(totals.cost)}`}
+          blurred={hidden}
         />
         <MetricCard
           label="평가 손익"
-          value={maskMoney(
-            hidden,
-            formatPrice(totals.pnl, "USD", ctx, { signed: true }),
-          )}
+          value={formatPrice(totals.pnl, "USD", ctx, { signed: true })}
           delta={
-            hidden || totals.pnlPct == null
+            totals.pnlPct == null
               ? undefined
               : `${totals.pnl! >= 0 ? "+" : ""}${totals.pnlPct.toFixed(2)}%`
           }
           tone={hidden ? "neutral" : pnlTone}
+          blurred={hidden}
         />
         <MetricCard
           label="종목 / 스케줄"
