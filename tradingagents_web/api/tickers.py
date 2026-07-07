@@ -1,4 +1,5 @@
 """Read-only API for real-time ticker search (US + KR, stocks & ETFs)."""
+
 from __future__ import annotations
 
 from typing import Annotated

@@ -1,4 +1,5 @@
 """Integration tests for the /api/tickers/search endpoint."""
+
 from tradingagents_web.schemas.ticker_search import TickerSearchResult
 from tradingagents_web.services import ticker_search as svc
 
@@ -18,7 +19,10 @@ def test_search_returns_results(auth_client, monkeypatch):
     assert resp.status_code == 200
     body = resp.json()
     assert body["results"][0] == {
-        "ticker": "NVDA", "name": "NVIDIA Corporation", "market": "US", "exchange": "NMS",
+        "ticker": "NVDA",
+        "name": "NVIDIA Corporation",
+        "market": "US",
+        "exchange": "NMS",
     }
 
 

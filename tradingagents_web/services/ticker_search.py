@@ -1,5 +1,6 @@
 """Real-time ticker search: routes queries to Naver (한글) or Yahoo (영문/티커),
 normalizes hits to US/KR stocks & ETFs. Uses httpx (not yfinance)."""
+
 from __future__ import annotations
 
 import logging
@@ -14,14 +15,44 @@ from tradingagents_web.schemas.ticker_search import TickerSearchResult
 
 # 야후 스타일 비(非)미국 거래소 접미사. web/lib/ticker-market.ts 와 동일 목록.
 _GLOBAL_SUFFIXES: tuple[str, ...] = (
-    ".T", ".HK", ".L", ".DE", ".PA", ".SS", ".SZ", ".TO", ".AX",
-    ".SW", ".MI", ".HE", ".ST", ".AS", ".BR", ".MC", ".SI", ".TW",
-    ".NS", ".BO", ".F", ".VI", ".LS", ".OL", ".CO", ".KL", ".JK",
+    ".T",
+    ".HK",
+    ".L",
+    ".DE",
+    ".PA",
+    ".SS",
+    ".SZ",
+    ".TO",
+    ".AX",
+    ".SW",
+    ".MI",
+    ".HE",
+    ".ST",
+    ".AS",
+    ".BR",
+    ".MC",
+    ".SI",
+    ".TW",
+    ".NS",
+    ".BO",
+    ".F",
+    ".VI",
+    ".LS",
+    ".OL",
+    ".CO",
+    ".KL",
+    ".JK",
+    ".SA",
+    ".MX",
+    ".BA",
+    ".SN",
 )
 _YAHOO_TYPES: frozenset[str] = frozenset({"EQUITY", "ETF"})
 _NAVER_KR_SUFFIX: dict[str, str] = {"KOSPI": ".KS", "KOSDAQ": ".KQ"}
 # 주식+ETF 목적에 맞춰 제외할 파생/구조화 상품 이름 패턴.
 _NAVER_DERIV_PATTERNS: tuple[str, ...] = ("레버리지", "인버스", "선물", "채권혼합", "2X", "3X")
+# 레버리지/인버스/파생 상품 이름 패턴(대문자 비교). 스펙: 주식+ETF만, 노이즈 제거.
+_YAHOO_DERIV_PATTERNS: tuple[str, ...] = ("2X", "3X", "-1X", "LEVERAGED", "INVERSE", "DAILY TARGET", "DRN", "ETN")
 
 
 def _classify_market(symbol: str) -> Literal["US", "KR"] | None:
@@ -43,8 +74,10 @@ def _classify_market(symbol: str) -> Literal["US", "KR"] | None:
     return "US"
 
 
-def _normalize_yahoo_quote(quote: dict) -> TickerSearchResult | None:
+def _normalize_yahoo_quote(quote: object) -> TickerSearchResult | None:
     """Yahoo search quote 항목을 정규화한다(EQUITY/ETF·US/KR만 통과)."""
+    if not isinstance(quote, dict):
+        return None
     if quote.get("quoteType") not in _YAHOO_TYPES:
         return None
     symbol = quote.get("symbol") or ""
@@ -52,11 +85,15 @@ def _normalize_yahoo_quote(quote: dict) -> TickerSearchResult | None:
     if market is None:
         return None
     name = quote.get("shortname") or quote.get("longname") or symbol
+    if any(pattern in name.upper() for pattern in _YAHOO_DERIV_PATTERNS):
+        return None
     return TickerSearchResult(ticker=symbol, name=name, market=market, exchange=quote.get("exchange"))
 
 
-def _normalize_naver_item(item: dict) -> TickerSearchResult | None:
+def _normalize_naver_item(item: object) -> TickerSearchResult | None:
     """Naver 자동완성 item 을 정규화한다(KOR KOSPI/KOSDAQ 또는 USA만 통과)."""
+    if not isinstance(item, dict):
+        return None
     name = item.get("name") or ""
     if any(pattern in name for pattern in _NAVER_DERIV_PATTERNS):
         return None
@@ -73,7 +110,7 @@ def _normalize_naver_item(item: dict) -> TickerSearchResult | None:
 
 
 _CACHE: "OrderedDict[str, tuple[float, list[TickerSearchResult]]]" = OrderedDict()
-_CACHE_TTL: float = 300.0   # 5분
+_CACHE_TTL: float = 300.0  # 5분
 _CACHE_MAX: int = 512
 
 
@@ -132,6 +169,8 @@ async def _search_yahoo(query: str) -> list[TickerSearchResult]:
         resp = await client.get(url, params=params, headers={"User-Agent": _USER_AGENT})
         resp.raise_for_status()
         data = resp.json()
+    if not isinstance(data, dict):
+        return []
     out: list[TickerSearchResult] = []
     for quote in data.get("quotes", []):
         result = _normalize_yahoo_quote(quote)
@@ -149,6 +188,8 @@ async def _search_naver(query: str) -> list[TickerSearchResult]:
         resp = await client.get(url, params=params, headers=headers)
         resp.raise_for_status()
         data = resp.json()
+    if not isinstance(data, dict):
+        return []
     out: list[TickerSearchResult] = []
     for item in data.get("items", []):
         result = _normalize_naver_item(item)

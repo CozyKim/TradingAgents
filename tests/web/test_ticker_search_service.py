@@ -1,4 +1,5 @@
 """Tests for ticker search routing/cache/fallback orchestration."""
+
 import httpx
 import pytest
 
@@ -58,7 +59,7 @@ async def test_result_is_cached(monkeypatch):
 
     monkeypatch.setattr(svc, "_search_yahoo", fake_yahoo)
     await svc.search_tickers("nvidia")
-    await svc.search_tickers("NVIDIA")   # 정규화 키 동일 → 캐시 히트
+    await svc.search_tickers("NVIDIA")  # 정규화 키 동일 → 캐시 히트
     assert calls["n"] == 1
 
 
