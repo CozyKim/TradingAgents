@@ -16,6 +16,7 @@ const GLOBAL_SUFFIXES = [
   ".T", ".HK", ".L", ".DE", ".PA", ".SS", ".SZ", ".TO", ".AX",
   ".SW", ".MI", ".HE", ".ST", ".AS", ".BR", ".MC", ".SI", ".TW",
   ".NS", ".BO", ".F", ".VI", ".LS", ".OL", ".CO", ".KL", ".JK",
+  ".SA", ".MX", ".BA", ".SN",
 ];
 
 const BADGES: Record<Market, MarketBadge> = {

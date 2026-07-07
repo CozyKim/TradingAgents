@@ -112,7 +112,7 @@ export function commitInput(raw: string, options: SearchOptions = {}): CommitRes
   const q = normalize(raw);
   if (!q) return { status: "empty" };
 
-  const hasHangul = HANGUL_RE.test(q);
+  const isHangul = HANGUL_RE.test(q);
   const upper = q.toUpperCase();
 
   // 1단계: 한글/영문/특수문자 불문하고 시드 정확일치(ticker 또는 alias) 먼저 시도
@@ -159,7 +159,7 @@ export function commitInput(raw: string, options: SearchOptions = {}): CommitRes
   // 한글 포함 입력: 어떤 형태든 매치(prefix/substring/ticker prefix)가 있으면
   // 선택 강제. 한글 입력은 멀티-character이라 substring matchings도 의미 있고,
   // 드롭다운에 후보가 보이는데 commit이 "결과 없음"이라고 거부하는 UX는 혼란스럽다.
-  if (hasHangul) {
+  if (isHangul) {
     const candidates = searchTickers(q, { ...options, limit: Number.POSITIVE_INFINITY });
     if (candidates.length > 0) {
       return { status: "needs_selection", candidates };

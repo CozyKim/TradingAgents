@@ -24,6 +24,10 @@ describe("resolveMarket", () => {
     expect(resolveMarket("0700.HK")?.market).toBe("GLOBAL");
   });
 
+  it("중남미 예탁증서(DR) 접미사를 GLOBAL로 판별한다", () => {
+    expect(resolveMarket("NVDC34.SA")?.market).toBe("GLOBAL");
+  });
+
   it("빈 문자열/공백이면 null을 반환한다", () => {
     expect(resolveMarket("")).toBeNull();
     expect(resolveMarket("   ")).toBeNull();

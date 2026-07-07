@@ -56,4 +56,11 @@ describe("mergeResults", () => {
     const out = mergeResults([seed("aapl")], [remote("AAPL", "Apple")], 10);
     expect(out.map((r) => r.ticker)).toEqual(["aapl"]);
   });
+
+  it("truncates merged results to the default limit of 10", () => {
+    const remotes = Array.from({ length: 12 }, (_, i) => remote(`TCK${i}`, `Company ${i}`));
+    const out = mergeResults([seed("AAPL")], remotes);
+    expect(out.length).toBe(10);
+    expect(out[0]).toEqual(seed("AAPL"));
+  });
 });

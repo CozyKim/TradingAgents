@@ -89,6 +89,8 @@ export function TickerCombobox({
       setLoading(false);
       return;
     }
+    // 질의가 바뀌면 이전 원격 결과를 즉시 비워, 디바운스/네트워크 대기 동안 stale 결과가 병합·선택되지 않게 한다.
+    setRemoteResults([]);
     const controller = new AbortController();
     const timer = setTimeout(() => {
       setLoading(true);
