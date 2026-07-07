@@ -115,26 +115,22 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="font-num mt-2 text-[36px] font-extrabold leading-none tracking-[-0.035em] text-text-1 md:text-[42px]">
-            {hidden ? (
-              <button
-                type="button"
-                onClick={peek}
-                data-testid="net-worth"
-                data-hidden="true"
-                aria-label="자산 금액 잠깐 보기"
-                className={cn("cursor-pointer text-text-1", balanceBlurClass(true))}
-              >
-                {fmtMoney(totals.value)}
-              </button>
-            ) : (
-              <span
-                data-testid="net-worth"
-                data-hidden="false"
-                className={cn("text-text-1", balanceBlurClass(false))}
-              >
-                {fmtMoney(totals.value)}
-              </span>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (hidden) peek();
+              }}
+              data-testid="net-worth"
+              data-hidden={hidden ? "true" : "false"}
+              aria-label={hidden ? "자산 금액 잠깐 보기" : "내 자산 금액"}
+              className={cn(
+                "text-left text-text-1",
+                hidden ? "cursor-pointer" : "cursor-default",
+                balanceBlurClass(hidden),
+              )}
+            >
+              {fmtMoney(totals.value)}
+            </button>
           </div>
           <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
             {totals.pnl != null ? (
