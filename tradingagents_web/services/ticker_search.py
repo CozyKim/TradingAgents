@@ -2,6 +2,8 @@
 normalizes hits to US/KR stocks & ETFs. Uses httpx (not yfinance)."""
 from __future__ import annotations
 
+from typing import Literal
+
 from tradingagents_web.schemas.ticker_search import TickerSearchResult
 
 # 야후 스타일 비(非)미국 거래소 접미사. web/lib/ticker-market.ts 와 동일 목록.
@@ -16,7 +18,7 @@ _NAVER_KR_SUFFIX: dict[str, str] = {"KOSPI": ".KS", "KOSDAQ": ".KQ"}
 _NAVER_DERIV_PATTERNS: tuple[str, ...] = ("레버리지", "인버스", "선물", "채권혼합", "2X", "3X")
 
 
-def _classify_market(symbol: str) -> str | None:
+def _classify_market(symbol: str) -> Literal["US", "KR"] | None:
     """티커 접미사로 상장 시장을 판별한다.
 
     Args:
