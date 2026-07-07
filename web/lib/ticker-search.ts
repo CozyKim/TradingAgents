@@ -197,3 +197,28 @@ export function commitInput(raw: string, options: SearchOptions = {}): CommitRes
   }
   return { status: "invalid", reason: "english_pattern" };
 }
+
+/** 문자열에 한글이 포함되면 true. (기존 모듈 레벨 HANGUL_RE 재사용) */
+export function hasHangul(text: string): boolean {
+  return HANGUL_RE.test(text);
+}
+
+/**
+ * 시드 결과를 상단에 고정하고 원격 결과를 아래에 붙인다.
+ * 티커(대문자) 기준으로 중복제거하며 시드가 우선한다. 최대 limit개.
+ */
+export function mergeResults(
+  seed: SearchResult[],
+  remote: SearchResult[],
+  limit = 10,
+): SearchResult[] {
+  const seen = new Set(seed.map((r) => r.ticker.toUpperCase()));
+  const merged = [...seed];
+  for (const r of remote) {
+    const key = r.ticker.toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(r);
+  }
+  return merged.slice(0, limit);
+}
