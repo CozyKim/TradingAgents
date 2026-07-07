@@ -2,9 +2,13 @@
 normalizes hits to US/KR stocks & ETFs. Uses httpx (not yfinance)."""
 from __future__ import annotations
 
+import logging
+import re
 import time
 from collections import OrderedDict
 from typing import Literal
+
+import httpx
 
 from tradingagents_web.schemas.ticker_search import TickerSearchResult
 
@@ -103,3 +107,78 @@ def _cache_put(query: str, results: list[TickerSearchResult]) -> None:
     _CACHE.move_to_end(key)
     while len(_CACHE) > _CACHE_MAX:
         _CACHE.popitem(last=False)
+
+
+logger = logging.getLogger(__name__)
+
+_TIMEOUT = httpx.Timeout(5.0, connect=5.0)
+_USER_AGENT = "Mozilla/5.0 (compatible; TradingAgents/1.0)"
+_MAX_QUERY_LEN = 64
+_MAX_RESULTS = 10
+# 한글 자모(호환) + 완성형 음절. web/lib/ticker-search.ts 의 HANGUL_RE 와 정합.
+_HANGUL_RE = re.compile(r"[ㄱ-ㆎ가-힣]")
+
+
+def _has_hangul(text: str) -> bool:
+    """문자열에 한글이 포함되면 True."""
+    return bool(_HANGUL_RE.search(text))
+
+
+async def _search_yahoo(query: str) -> list[TickerSearchResult]:
+    """Yahoo Finance search 엔드포인트로 영문/티커 질의를 조회한다."""
+    url = "https://query1.finance.yahoo.com/v1/finance/search"
+    params = {"q": query, "quotesCount": _MAX_RESULTS, "newsCount": 0}
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        resp = await client.get(url, params=params, headers={"User-Agent": _USER_AGENT})
+        resp.raise_for_status()
+        data = resp.json()
+    out: list[TickerSearchResult] = []
+    for quote in data.get("quotes", []):
+        result = _normalize_yahoo_quote(quote)
+        if result is not None:
+            out.append(result)
+    return out[:_MAX_RESULTS]
+
+
+async def _search_naver(query: str) -> list[TickerSearchResult]:
+    """Naver 자동완성으로 한글명 질의(KRX + 미국 인기주)를 조회한다."""
+    url = "https://ac.stock.naver.com/ac"
+    params = {"q": query, "target": "stock", "st": 1}
+    headers = {"User-Agent": _USER_AGENT, "Referer": "https://finance.naver.com/"}
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        resp = await client.get(url, params=params, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+    out: list[TickerSearchResult] = []
+    for item in data.get("items", []):
+        result = _normalize_naver_item(item)
+        if result is not None:
+            out.append(result)
+    return out[:_MAX_RESULTS]
+
+
+async def search_tickers(query: str) -> list[TickerSearchResult]:
+    """질의를 소스로 라우팅해 정규화된 결과를 반환한다.
+
+    한글 포함 질의는 Naver, 그 외는 Yahoo로 라우팅한다. 캐시 히트 시 업스트림을
+    호출하지 않으며, 업스트림 실패/타임아웃 시 빈 리스트를 반환한다(검색은 부가기능).
+
+    Args:
+        query: 사용자 입력 문자열.
+
+    Returns:
+        최대 10개의 정규화된 TickerSearchResult. 빈 질의/실패 시 빈 리스트.
+    """
+    q = query.strip()[:_MAX_QUERY_LEN]
+    if not q:
+        return []
+    cached = _cache_get(q)
+    if cached is not None:
+        return cached
+    try:
+        results = await _search_naver(q) if _has_hangul(q) else await _search_yahoo(q)
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("ticker search upstream failed for %r: %s", q, exc)
+        return []
+    _cache_put(q, results)
+    return results
