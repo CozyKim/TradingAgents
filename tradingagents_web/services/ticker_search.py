@@ -2,6 +2,8 @@
 normalizes hits to US/KR stocks & ETFs. Uses httpx (not yfinance)."""
 from __future__ import annotations
 
+import time
+from collections import OrderedDict
 from typing import Literal
 
 from tradingagents_web.schemas.ticker_search import TickerSearchResult
@@ -64,3 +66,40 @@ def _normalize_naver_item(item: dict) -> TickerSearchResult | None:
     if nation == "USA":
         return TickerSearchResult(ticker=code, name=name, market="US", exchange=item.get("typeCode"))
     return None
+
+
+_CACHE: "OrderedDict[str, tuple[float, list[TickerSearchResult]]]" = OrderedDict()
+_CACHE_TTL: float = 300.0   # 5분
+_CACHE_MAX: int = 512
+
+
+def _now() -> float:
+    """단조 시각(초). 테스트에서 monkeypatch 하기 위한 간접 계층."""
+    return time.monotonic()
+
+
+def _cache_key(query: str) -> str:
+    return query.strip().lower()
+
+
+def _cache_get(query: str) -> list[TickerSearchResult] | None:
+    """캐시 조회. 만료 항목은 폐기하고 None 반환. 히트 시 LRU 갱신."""
+    key = _cache_key(query)
+    hit = _CACHE.get(key)
+    if hit is None:
+        return None
+    stamped_at, value = hit
+    if _now() - stamped_at > _CACHE_TTL:
+        _CACHE.pop(key, None)
+        return None
+    _CACHE.move_to_end(key)
+    return value
+
+
+def _cache_put(query: str, results: list[TickerSearchResult]) -> None:
+    """캐시에 저장하고 상한 초과 시 LRU 축출."""
+    key = _cache_key(query)
+    _CACHE[key] = (_now(), results)
+    _CACHE.move_to_end(key)
+    while len(_CACHE) > _CACHE_MAX:
+        _CACHE.popitem(last=False)
