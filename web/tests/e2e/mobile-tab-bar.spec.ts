@@ -146,4 +146,11 @@ test.describe("ticker search overlay", () => {
     const stateAfterClose = await page.evaluate(() => window.history.state);
     expect(stateAfterClose?.tickerSearchOpen).toBeFalsy();
   });
+
+  test("종목 상세의 분석 실행 CTA는 티커를 프리필한다", async ({ page }) => {
+    await login(page);
+    await page.goto("/portfolio/AAPL");
+    await page.getByRole("link", { name: "분석 실행" }).click();
+    await page.waitForURL(/\/run\?ticker=AAPL/);
+  });
 });

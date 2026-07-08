@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useHoldings } from "@/hooks/use-holdings";
 import { useRunList } from "@/hooks/use-runs";
@@ -56,11 +57,18 @@ export default function PortfolioDetail() {
 
   return (
     <div className="px-4 md:px-6 py-6 md:py-8 max-w-screen-xl mx-auto space-y-6">
-      <div className="flex items-baseline gap-3">
-        <h1 className="text-2xl font-bold font-mono">{ticker}</h1>
-        <Link href={back.href} className="text-xs text-text-3 hover:underline">
-          {back.label}
-        </Link>
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="flex items-baseline gap-3">
+          <h1 className="text-2xl font-bold font-mono">{ticker}</h1>
+          <Link href={back.href} className="text-xs text-text-3 hover:underline">
+            {back.label}
+          </Link>
+        </div>
+        {/* 보유·분석이력 유무로 분기하지 않는다 — 재분석도 흔하고, 조건부 CTA는
+            "왜 어떤 종목엔 버튼이 없지?"라는 학습 비용을 만든다. */}
+        <Button asChild size="sm">
+          <Link href={`/run?ticker=${encodeURIComponent(ticker)}`}>분석 실행</Link>
+        </Button>
       </div>
 
       {holding ? (
