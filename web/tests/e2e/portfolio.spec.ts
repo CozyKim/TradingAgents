@@ -23,10 +23,6 @@ async function goToPortfolioDetail(page: Page) {
   await page.goto("/portfolio");
   await page.waitForLoadState("networkidle");
 
-  // 티커 옆에 한글 종목명이 병기된다 (Naver 해석 → ticker_names 캐시).
-  const row = page.locator("tr", { hasText: "AAPL" }).first();
-  await expect(row).toContainText("애플", { timeout: 15_000 });
-
   // holdings-table.tsx의 ticker 링크는 `/portfolio/<TICKER>` 형태.
   const holdingLink = page
     .locator('a[href^="/portfolio/"]')
@@ -81,5 +77,30 @@ test.describe("portfolio detail chart", () => {
     // 정리: 다시 끄기.
     await rsiAfter.click();
     await expect(rsiAfter).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+test.describe("portfolio holdings ticker name", () => {
+  test("holdings row shows Korean name alongside ticker", async ({ page }) => {
+    await login(page);
+    await page.goto("/portfolio");
+    await page.waitForLoadState("networkidle");
+
+    // Add holding: ticker combobox → qty → avg cost → submit.
+    await page.locator("#ticker").fill("AAPL");
+    await page.keyboard.press("Enter");
+    await page.locator("#qty").fill("10");
+    await page.locator("#avg").fill("150");
+
+    const createResponse = page.waitForResponse(
+      (res) => res.url().includes("/api/holdings") && res.request().method() === "POST",
+    );
+    await page.getByRole("button", { name: /^Add$/ }).click();
+    await createResponse;
+
+    // 티커 옆에 한글 종목명이 병기된다 (Naver 해석 → ticker_names 캐시).
+    const row = page.locator("tr", { hasText: "AAPL" }).first();
+    await expect(row).toContainText("애플", { timeout: 15_000 });
+    await expect(row).toContainText("AAPL");
   });
 });
