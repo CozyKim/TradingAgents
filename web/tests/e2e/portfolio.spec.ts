@@ -22,6 +22,11 @@ async function login(page: Page) {
 async function goToPortfolioDetail(page: Page) {
   await page.goto("/portfolio");
   await page.waitForLoadState("networkidle");
+
+  // 티커 옆에 한글 종목명이 병기된다 (Naver 해석 → ticker_names 캐시).
+  const row = page.locator("tr", { hasText: "AAPL" }).first();
+  await expect(row).toContainText("애플", { timeout: 15_000 });
+
   // holdings-table.tsx의 ticker 링크는 `/portfolio/<TICKER>` 형태.
   const holdingLink = page
     .locator('a[href^="/portfolio/"]')

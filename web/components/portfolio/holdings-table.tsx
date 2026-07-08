@@ -1,4 +1,5 @@
 "use client";
+import { useMemo } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Holding } from "@/lib/holdings";
@@ -7,6 +8,8 @@ import { useCurrency, formatPrice, currencyForTicker } from "@/lib/currency";
 import { MonitorToggle } from "./monitor-toggle";
 import { PnLCell } from "./pnl-cell";
 import { QtyCell, AvgCostCell } from "./qty-cell";
+import { useTickerNames } from "@/hooks/use-ticker-names";
+import { TickerLabel } from "@/components/ui/ticker-label";
 
 export function HoldingsTable({
   rows,
@@ -17,6 +20,8 @@ export function HoldingsTable({
 }) {
   const del = useDeleteHolding();
   const ctx = useCurrency();
+  const tickers = useMemo(() => rows.map((h) => h.ticker), [rows]);
+  const { nameOf } = useTickerNames(tickers);
   if (rows.length === 0) {
     return (
       <p className="text-sm text-text-3 py-8 text-center">
@@ -29,7 +34,7 @@ export function HoldingsTable({
       <table className="w-full text-sm">
         <thead>
           <tr className="text-2xs uppercase tracking-wider text-text-3 border-b border-border-1">
-            <th className="text-left py-2">Ticker</th>
+            <th className="text-left py-2">종목</th>
             <th className="text-right">Qty</th>
             <th className="text-right">Avg Cost</th>
             <th className="text-right">Last</th>
@@ -44,9 +49,9 @@ export function HoldingsTable({
             const cur = currencyForTicker(h.ticker);
             return (
               <tr key={h.id} className="border-b border-border-1 hover:bg-bg-2">
-                <td className="py-2 font-mono">
+                <td className="py-2">
                   <Link className="hover:underline" href={`/portfolio/${h.ticker}`}>
-                    {h.ticker}
+                    <TickerLabel ticker={h.ticker} name={nameOf(h.ticker)} />
                   </Link>
                 </td>
                 <td className="text-right">
