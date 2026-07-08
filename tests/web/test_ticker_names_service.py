@@ -195,3 +195,74 @@ class TestResolveNames:
 
         monkeypatch.setattr(svc, "_search_naver", boom)
         assert await svc.resolve_names([], db_session) == {}
+
+    async def test_naver_exception_still_tries_yahoo(self, db_session, monkeypatch):
+        """Naver가 403/429/타임아웃으로 예외를 던져도 Yahoo 폴백은 시도돼야 한다.
+
+        ac.stock.naver.com은 스푸핑된 UA/Referer로 때리는 비공식 엔드포인트라 403/429가
+        현실적이다. 하나의 try로 두 업스트림을 묶으면 Naver 실패가 Yahoo 호출 자체를
+        막아, Yahoo가 멀쩡해도 티커가 5분간 negative 캐시에 박힌다.
+        """
+        import httpx
+
+        async def broken_naver(q):
+            raise httpx.ConnectTimeout("naver blocked")
+
+        async def fake_yahoo(q):
+            assert q == "SMCI"
+            return [_hit("SMCI", "Super Micro Computer, Inc.")]
+
+        monkeypatch.setattr(svc, "_search_naver", broken_naver)
+        monkeypatch.setattr(svc, "_search_yahoo", fake_yahoo)
+
+        out = await svc.resolve_names(["SMCI"], db_session)
+        assert out == {"SMCI": "Super Micro Computer, Inc."}
+
+    async def test_yahoo_bad_payload_does_not_poison_batch(self, db_session, monkeypatch):
+        """Yahoo가 검증되지 않은 페이로드로 TypeError/AttributeError를 던져도 전파되면 안 된다.
+
+        _normalize_yahoo_quote는 검증 없이 symbol.strip()·name.upper()를 호출한다.
+        페이로드가 이상하면 TypeError/AttributeError가 튀는데, 좁은 except 절이
+        (httpx.HTTPError, ValueError)만 잡으면 asyncio.gather를 거쳐 resolve_names
+        밖으로 전파돼 같은 배치의 정상 티커까지 통째로 버려지고 호출자가 500을 받는다.
+        """
+
+        async def empty_naver(q):
+            return []
+
+        async def flaky_yahoo(q):
+            if q == "AAPL":
+                return [_hit("AAPL", "애플")]
+            raise TypeError("'NoneType' object has no attribute 'strip'")
+
+        monkeypatch.setattr(svc, "_search_naver", empty_naver)
+        monkeypatch.setattr(svc, "_search_yahoo", flaky_yahoo)
+
+        out = await svc.resolve_names(["AAPL", "WEIRD"], db_session)
+        assert out == {"AAPL": "애플"}, "이상한 페이로드를 받은 WEIRD 때문에 AAPL까지 사라지면 안 된다"
+
+    async def test_stale_name_survives_two_calls_during_outage(self, db_session, monkeypatch):
+        """업스트림 전면 장애 중 resolve_names를 두 번 호출해도 두 번 다 stale 이름이 나와야 한다.
+
+        1회차는 stale 딕셔너리에서 바로 채워지지만, negative 캐시가 채워지는 2회차부터는
+        `elif ticker in stale` 분기를 타는데 이 경로는 커버리지가 없었다 — 그 두 줄을
+        지워도 기존 테스트는 전원 통과했다. 회귀 시나리오: 장애 중 첫 요청은 이름이
+        보이고 새로고침(2번째 요청)부터 5분간 이름이 사라진다.
+        """
+        import httpx
+
+        old = datetime.now(timezone.utc) - timedelta(days=31)
+        db_session.add(TickerName(ticker="AAPL", name="애플", created_at=old, updated_at=old))
+        db_session.commit()
+
+        async def boom(q):
+            raise httpx.ConnectTimeout("upstream down")
+
+        monkeypatch.setattr(svc, "_search_naver", boom)
+        monkeypatch.setattr(svc, "_search_yahoo", boom)
+
+        first = await svc.resolve_names(["AAPL"], db_session)
+        assert first == {"AAPL": "애플"}
+
+        second = await svc.resolve_names(["AAPL"], db_session)
+        assert second == {"AAPL": "애플"}, "negative 캐시 히트 2회차에도 stale 이름을 계속 서빙해야 한다"

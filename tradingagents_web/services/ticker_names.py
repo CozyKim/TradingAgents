@@ -125,19 +125,34 @@ async def _resolve_one(ticker: str) -> str | None:
     Naver 를 먼저 때린다 — 한글명이 목적이기 때문이다. Yahoo 는 Naver 가 모르는
     종목(지수, 일부 ETF)을 위한 영문명 안전망이다.
 
+    Naver 와 Yahoo 를 별개의 try 로 감싼다. ``ac.stock.naver.com`` 은 스푸핑된
+    UA/Referer 로 때리는 비공식 엔드포인트라 403/429/타임아웃이 현실적으로 자주
+    난다. 두 업스트림을 하나의 try 로 묶으면 Naver 예외가 Yahoo 호출 자체를
+    막아버려, Yahoo 가 멀쩡해도 모든 티커가 실패로 처리된다.
+
     Yahoo 에는 원본 티커를 그대로 보낸다. Yahoo 는 ``BRK-B``, ``005930.KS`` 표기를
     쓰므로 _canonical 을 적용하면 오히려 못 찾는다.
+
+    ``TypeError``/``AttributeError`` 도 함께 잡는다. ``_normalize_yahoo_quote`` 는
+    검증되지 않은 JSON 페이로드에 ``symbol.strip()``·``name.upper()`` 를 호출하므로
+    이상한 응답이 오면 이 예외들이 튄다. 이름 표시는 부가 기능이라 실패해도 티커는
+    보여야 한다 — 잡지 않으면 asyncio.gather 를 거쳐 같은 배치의 정상 티커까지
+    통째로 버려지고 호출자가 500 을 받는다.
     """
+    name: str | None = None
     try:
         naver_hits = await _search_naver(_canonical(ticker))
         name = _pick_exact(naver_hits, ticker)
-        if name is not None:
-            return name
+    except (httpx.HTTPError, ValueError, TypeError, AttributeError) as exc:
+        logger.warning("naver ticker name resolve failed for %r: %s", ticker, exc)
+    if name is not None:
+        return name
+
+    try:
         yahoo_hits = await _search_yahoo(ticker)
         return _pick_exact(yahoo_hits, ticker)
-    except (httpx.HTTPError, ValueError) as exc:
-        # 이름 표시는 부가 기능이다. 실패해도 티커는 보인다.
-        logger.warning("ticker name resolve failed for %r: %s", ticker, exc)
+    except (httpx.HTTPError, ValueError, TypeError, AttributeError) as exc:
+        logger.warning("yahoo ticker name resolve failed for %r: %s", ticker, exc)
         return None
 
 
