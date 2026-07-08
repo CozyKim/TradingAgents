@@ -87,3 +87,54 @@ test.describe("mobile tab bar", () => {
     await page.waitForURL("**/alerts");
   });
 });
+
+test.describe("ticker search overlay", () => {
+  test("검색 결과를 고르면 종목 상세로 가고 뒤로가기 한 번에 돌아온다", async ({
+    page,
+  }) => {
+    await login(page);
+
+    // 실제 Yahoo/Naver 호출을 끊는다. 검증 대상은 선택→내비게이션→뒤로가기이지
+    // 외부 응답이 아니다.
+    await page.route("**/api/tickers/search**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          results: [
+            { ticker: "AAPL", name: "Apple Inc.", market: "US", exchange: "NASDAQ" },
+          ],
+        }),
+      });
+    });
+
+    await page.goto("/portfolio");
+    await page.getByRole("button", { name: "티커 검색" }).click();
+
+    const dialog = page.getByRole("dialog", { name: "티커 검색" });
+    await expect(dialog).toBeVisible();
+
+    await dialog.getByRole("combobox").fill("애플");
+    await dialog.getByRole("option", { name: /AAPL/ }).click();
+
+    await page.waitForURL("**/portfolio/AAPL");
+
+    // pushState 더미 엔트리를 router.replace 가 치환했으므로 back 한 번이면 된다.
+    await page.goBack();
+    await expect(page).toHaveURL(/\/portfolio$/);
+  });
+
+  test("Escape 로 닫히고 URL은 바뀌지 않는다", async ({ page }) => {
+    await login(page);
+    await page.goto("/portfolio");
+    const before = page.url();
+
+    await page.getByRole("button", { name: "티커 검색" }).click();
+    const dialog = page.getByRole("dialog", { name: "티커 검색" });
+    await expect(dialog).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    expect(page.url()).toBe(before);
+  });
+});
