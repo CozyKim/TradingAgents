@@ -65,4 +65,25 @@ test.describe("mobile tab bar", () => {
     // 화면에는 클램된 값만 보인다.
     await expect(nav.getByText("99+")).toBeVisible();
   });
+
+  test("더보기에 관심종목과 알림이 모두 있고 알림은 /alerts 로 간다", async ({
+    page,
+  }) => {
+    await login(page);
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    await nav.getByRole("link", { name: /더보기/ }).click();
+    await page.waitForURL("**/more");
+
+    // 탭바에도 "관심종목" 링크가 있으므로 본문(main)으로 범위를 좁힌다.
+    const body = page.locator("main");
+    await expect(body.getByRole("link", { name: "관심종목" })).toBeVisible();
+
+    // Playwright의 name 옵션은 기본이 부분일치다. href로 한 번 더 못박는다.
+    // main 안에는 상단바 UnreadBell도 href="/alerts" 링크를 갖고 있으므로,
+    // 더보기 목록(<ul>)으로 범위를 좁혀야 진짜로 새 항목이 추가됐는지 검증할 수 있다.
+    const list = body.getByRole("list");
+    await expect(list.locator('a[href="/alerts"]')).toHaveCount(1);
+    await list.locator('a[href="/alerts"]').click();
+    await page.waitForURL("**/alerts");
+  });
 });

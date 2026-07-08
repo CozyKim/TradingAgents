@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 
 const ITEMS = [
   { href: "/watchlist", label: "관심종목", desc: "스케줄에 등록된 종목 모음" },
+  { href: "/alerts", label: "알림", desc: "분석 결과 알림" },
   { href: "/sectors", label: "Sectors", desc: "Industry value-chain reports" },
   { href: "/history", label: "History", desc: "Past analyses" },
   { href: "/schedules", label: "Schedules", desc: "Recurring runs" },
