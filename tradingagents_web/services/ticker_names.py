@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 
 import httpx
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from tradingagents_web.models import TickerName
@@ -75,17 +76,25 @@ def _pick_exact(results: list[TickerSearchResult], want: str) -> str | None:
     Yahoo 폴백에서 want="BRK-B", 응답="BRK-B" 인데 "BRK.B" != "BRK-B" 로
     조용히 None 이 된다.
 
+    빈 문자열/공백만인 이름은 매칭이 아니라 None 으로 취급한다.
+    ``ticker_search._normalize_naver_item`` 은 ``item.get("name") or ""`` 로 이름
+    누락을 명시적으로 허용하고 ``TickerSearchResult.name`` 에는 길이 제약이 없다.
+    여기서 빈 이름을 성공으로 돌려주면 호출자(_resolve_one)가 Yahoo 폴백을
+    건너뛰고, resolve_names 는 그 빈 이름을 "해석 성공"으로 보고 DB 에 30일
+    박아버린다 — "이름 없음"과 "이름이 티커와 같음"을 구분 못 하게 만드는
+    바로 그 계약 위반이다.
+
     Args:
         results: 업스트림에서 정규화된 후보들.
         want: 질의 티커. 원본이든 _canonical 통과본이든 상관없다.
 
     Returns:
-        일치하는 후보의 이름. 없으면 None.
+        일치하는 후보의 이름. 없거나 이름이 빈 문자열/공백뿐이면 None.
     """
     target = _canonical(want)
     for result in results:
         if _canonical(result.ticker) == target:
-            return result.name
+            return result.name if result.name.strip() else None
     return None
 
 
@@ -157,19 +166,30 @@ async def _resolve_one(ticker: str) -> str | None:
 
 
 def _upsert(db: Session, ticker: str, name: str) -> None:
-    """이름을 저장한다.
+    """이름을 저장한다. DB 영속화 실패는 예외를 전파하지 않는다.
 
     updated_at 을 명시적으로 대입하는 이유: SQLAlchemy 의 onupdate 는 UPDATE 문이
     실제로 나갈 때만 작동한다. 재조회 결과가 이전과 같은 이름이면 ORM 이 UPDATE 를
     생략해 타임스탬프가 그대로 남고, 30일 경과 후 매 요청마다 업스트림을 때리게 된다.
+
+    같은 신규 티커(PK)를 동시에 두 세션이 해석하면 둘 다 ``db.get`` 에서 None 을
+    보고 ``db.add`` 를 시도할 수 있다. 늦게 commit 하는 쪽은 IntegrityError 를
+    받는데, rollback 없이 흘려보내면 오염된 Session 이 resolve_names 밖으로
+    전파돼 이름 하나 못 붙인 대가로 호출자(포트폴리오/관심종목 동시 로드 등)가
+    화면 전체 500 을 받는다. 이름 표시는 부가 기능이므로 여기서 삼키고 경고
+    로그만 남긴다 — 이미 해석된 이름은 이번 응답에서 계속 쓸 수 있어야 한다.
     """
-    row = db.get(TickerName, ticker)
-    if row is None:
-        db.add(TickerName(ticker=ticker, name=name))
-    else:
-        row.name = name
-        row.updated_at = utcnow()
-    db.commit()
+    try:
+        row = db.get(TickerName, ticker)
+        if row is None:
+            db.add(TickerName(ticker=ticker, name=name))
+        else:
+            row.name = name
+            row.updated_at = utcnow()
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.warning("failed to persist ticker name for %r: %s", ticker, exc)
 
 
 async def resolve_names(tickers: Sequence[str], db: Session) -> dict[str, str]:

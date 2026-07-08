@@ -241,6 +241,66 @@ class TestResolveNames:
         out = await svc.resolve_names(["AAPL", "WEIRD"], db_session)
         assert out == {"AAPL": "애플"}, "이상한 페이로드를 받은 WEIRD 때문에 AAPL까지 사라지면 안 된다"
 
+    async def test_empty_naver_name_falls_back_to_yahoo(self, db_session, monkeypatch):
+        """Naver가 name=''을 주면 성공으로 취급하면 안 된다.
+
+        ticker_search._normalize_naver_item 은 ``item.get("name") or ""`` 로 이름
+        누락을 명시적으로 허용한다. _resolve_one 이 이를 성공으로 오판하면 Yahoo
+        폴백이 스킵되고 빈 이름이 그대로 DB(30일)에 박힌다.
+        """
+
+        async def fake_naver(q):
+            return [_hit("AAPL", "")]
+
+        async def fake_yahoo(q):
+            assert q == "AAPL"
+            return [_hit("AAPL", "Apple Inc.")]
+
+        monkeypatch.setattr(svc, "_search_naver", fake_naver)
+        monkeypatch.setattr(svc, "_search_yahoo", fake_yahoo)
+
+        out = await svc.resolve_names(["AAPL"], db_session)
+        assert out == {"AAPL": "Apple Inc."}, "Naver 빈 이름은 실패로 취급해 Yahoo로 폴백해야 한다"
+        assert db_session.get(TickerName, "AAPL").name == "Apple Inc."
+
+    async def test_both_upstreams_empty_name_omits_key_and_skips_db(self, db_session, monkeypatch):
+        """Naver·Yahoo 둘 다 빈 이름을 주면 negative 캐시로 가야 한다(DB 30일 고착 금지)."""
+
+        async def fake_naver(q):
+            return [_hit("AAPL", "")]
+
+        async def fake_yahoo(q):
+            return [_hit("AAPL", "   ")]
+
+        monkeypatch.setattr(svc, "_search_naver", fake_naver)
+        monkeypatch.setattr(svc, "_search_yahoo", fake_yahoo)
+
+        out = await svc.resolve_names(["AAPL"], db_session)
+        assert out == {}, "양쪽 다 빈 이름이면 키 자체가 생략돼야 한다"
+        assert db_session.get(TickerName, "AAPL") is None, "빈 이름이 DB에 30일 고착되면 안 된다"
+
+    async def test_upsert_failure_does_not_propagate(self, db_session, monkeypatch):
+        """_upsert가 SQLAlchemyError(예: 동시 삽입 IntegrityError)를 만나도
+
+        resolve_names는 예외를 전파하지 않고, 해석된 이름을 이번 응답에서 그대로
+        반환해야 한다. DB 영속화만 실패한 것이지 이름 해석 자체는 성공이다.
+        """
+        from sqlalchemy.exc import IntegrityError
+
+        async def fake_naver(q):
+            return [_hit("AAPL", "애플")]
+
+        def boom_commit():
+            raise IntegrityError("INSERT INTO ticker_names ...", {}, Exception("UNIQUE constraint failed"))
+
+        monkeypatch.setattr(svc, "_search_naver", fake_naver)
+        monkeypatch.setattr(db_session, "commit", boom_commit)
+
+        out = await svc.resolve_names(["AAPL"], db_session)
+        assert out == {"AAPL": "애플"}, "DB 저장이 실패해도 해석된 이름은 응답에 남아야 한다"
+        # rollback이 호출되지 않으면 세션이 오염돼 다음 쿼리에서도 예외가 튄다.
+        assert db_session.get(TickerName, "AAPL") is None
+
     async def test_stale_name_survives_two_calls_during_outage(self, db_session, monkeypatch):
         """업스트림 전면 장애 중 resolve_names를 두 번 호출해도 두 번 다 stale 이름이 나와야 한다.
 
