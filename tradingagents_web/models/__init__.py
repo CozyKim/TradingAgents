@@ -11,6 +11,7 @@ from tradingagents_web.models.sector_run import SectorRun
 from tradingagents_web.models.trending_scan import TrendingScan
 from tradingagents_web.models.session import Session
 from tradingagents_web.models.setting import Setting
+from tradingagents_web.models.ticker_name import TickerName
 from tradingagents_web.models.user import User
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "SectorRun",
     "Session",
     "Setting",
+    "TickerName",
     "TimestampMixin",
     "TrendingScan",
     "User",
