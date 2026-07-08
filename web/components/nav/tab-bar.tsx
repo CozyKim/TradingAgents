@@ -67,13 +67,13 @@ export function TabBar() {
 
           // 알림 탭을 없앤 대신 미확인 알림 수를 더보기 탭에 얹는다(알림은 /more 안에 있다).
           const badge = tab.href === "/more" ? unreadCount : 0;
-          const badgeText = badge > 99 ? "99+" : String(badge);
           return (
             <li key={tab.href}>
               <Link
                 href={tab.href}
                 aria-label={
-                  badge > 0 ? `${tab.label} (미확인 알림 ${badgeText}개)` : undefined
+                  // 클램은 16px 원을 위한 것이지 음성을 위한 게 아니다. unread-bell.tsx:11,17과 동일.
+                  badge > 0 ? `${tab.label} (미확인 알림 ${badge}개)` : undefined
                 }
                 className={cn(
                   "flex flex-col items-center gap-1 rounded-xl py-1.5 text-[10.5px] font-semibold tracking-[-0.01em] transition-colors",
@@ -91,7 +91,7 @@ export function TabBar() {
                       aria-hidden
                       className="absolute -right-2 -top-1 inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold leading-4 text-white ring-2 ring-bg-1"
                     >
-                      {badgeText}
+                      {badge > 99 ? "99+" : badge}
                     </span>
                   )}
                 </span>

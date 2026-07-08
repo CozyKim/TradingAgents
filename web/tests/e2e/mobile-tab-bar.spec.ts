@@ -32,7 +32,9 @@ test.describe("mobile tab bar", () => {
     await expect(nav.getByRole("link", { name: "관심종목" })).toBeVisible();
     await expect(nav.getByRole("link", { name: /더보기/ })).toBeVisible();
 
-    await expect(nav.getByRole("link", { name: "알림" })).toHaveCount(0);
+    // href로 단언한다. Playwright의 name 옵션은 기본이 부분일치라
+    // name: "알림" 은 배지가 켜진 더보기 링크("더보기 (미확인 알림 3개)")를 잡는다.
+    await expect(nav.locator('a[href="/alerts"]')).toHaveCount(0);
   });
 
   test("관심종목 탭은 /watchlist 로 간다", async ({ page }) => {
@@ -41,5 +43,26 @@ test.describe("mobile tab bar", () => {
     await nav.getByRole("link", { name: "관심종목" }).click();
     await page.waitForURL("**/watchlist");
     await expect(page.getByRole("heading", { name: "관심종목" })).toBeVisible();
+  });
+
+  test("미확인 알림이 있으면 더보기 탭에 배지와 접근성 이름이 붙는다", async ({
+    page,
+  }) => {
+    await page.route("**/api/alerts/unread-count", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: '{"unread":150}',
+      }),
+    );
+    await login(page);
+    const nav = page.getByRole("navigation", { name: "Primary" });
+
+    // 배지는 aria-hidden이므로 접근성 이름은 aria-label 하나뿐이다.
+    await expect(
+      nav.getByRole("link", { name: "더보기 (미확인 알림 150개)", exact: true }),
+    ).toBeVisible();
+    // 화면에는 클램된 값만 보인다.
+    await expect(nav.getByText("99+")).toBeVisible();
   });
 });
