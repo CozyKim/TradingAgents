@@ -594,7 +594,7 @@ def _invoke_judge_sync(
     from tradingagents.llm_clients import create_llm_client
 
     client = create_llm_client(
-        provider=request.llm_provider, model=request.llm_deep_model
+        provider=request.llm_provider, model=request.llm_quick_model
     )
     llm = client.get_llm()
     messages = [
