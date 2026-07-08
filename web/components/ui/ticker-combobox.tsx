@@ -3,14 +3,8 @@ import * as React from "react";
 
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
-import {
-  searchTickers,
-  mergeResults,
-  hasHangul,
-  commitInput,
-  type SearchResult,
-} from "@/lib/ticker-search";
-import { searchTickersRemote } from "@/lib/ticker-search-remote";
+import { useTickerSearch } from "@/hooks/use-ticker-search";
+import { commitInput, type SearchResult } from "@/lib/ticker-search";
 import { cn } from "@/lib/utils";
 
 export type TickerComboboxProps = {
@@ -73,52 +67,7 @@ export function TickerCombobox({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
-  const seedResults = React.useMemo<SearchResult[]>(() => {
-    if (!query.trim()) return [];
-    return searchTickers(query);
-  }, [query]);
-
-  const [remoteResults, setRemoteResults] = React.useState<SearchResult[]>([]);
-  const [loading, setLoading] = React.useState(false);
-
-  // 250ms 디바운스 + AbortController 로 원격 검색. 새 입력마다 이전 요청 취소.
-  React.useEffect(() => {
-    const q = query.trim();
-    if (!q) {
-      setRemoteResults([]);
-      setLoading(false);
-      return;
-    }
-    // 질의가 바뀌면 이전 원격 결과를 즉시 비워, 디바운스/네트워크 대기 동안 stale 결과가 병합·선택되지 않게 한다.
-    setRemoteResults([]);
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      setLoading(true);
-      searchTickersRemote(q, controller.signal)
-        .then((remote) => {
-          if (!controller.signal.aborted) setRemoteResults(remote);
-        })
-        .catch((err: unknown) => {
-          // abort 는 정상 취소이므로 무시. 그 외 실패는 원격 결과 비움(시드로 degrade).
-          if ((err as { name?: string })?.name !== "AbortError") setRemoteResults([]);
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) setLoading(false);
-        });
-    }, 250);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [query]);
-
-  const results = React.useMemo<SearchResult[]>(
-    () => mergeResults(seedResults, remoteResults),
-    [seedResults, remoteResults],
-  );
-
-  const showEmptyHint =
-    !loading && results.length === 0 && query.trim().length > 0 && hasHangul(query);
+  const { results, loading, showEmptyHint } = useTickerSearch(query);
 
   // 결과가 줄어들었거나 새 query라 무효해진 highlight는 -1로 리셋(자동 선택 방지)
   React.useEffect(() => {
