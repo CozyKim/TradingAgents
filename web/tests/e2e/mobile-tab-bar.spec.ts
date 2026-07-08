@@ -119,9 +119,13 @@ test.describe("ticker search overlay", () => {
 
     await page.waitForURL("**/portfolio/AAPL");
 
-    // pushState 더미 엔트리를 router.replace 가 치환했으므로 back 한 번이면 된다.
+    // pushState 더미 엔트리를 router.replace 가 치환했으므로 back 한 번이면 origin이다.
     await page.goBack();
     await expect(page).toHaveURL(/\/portfolio$/);
+    // 그리고 그 자리는 더미가 아니라 진짜 origin이어야 한다. router.push 였다면
+    // 더미(state.tickerSearchOpen=true)에 착지했을 것이다 — 그 회귀를 여기서 잡는다.
+    const stateAfterBack = await page.evaluate(() => window.history.state);
+    expect(stateAfterBack?.tickerSearchOpen).toBeFalsy();
   });
 
   test("Escape 로 닫히고 URL은 바뀌지 않는다", async ({ page }) => {
@@ -136,5 +140,10 @@ test.describe("ticker search overlay", () => {
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
     expect(page.url()).toBe(before);
+
+    // 더미 엔트리가 실제로 소비됐는지 확인한다. Escape가 onClose()를 직접 불렀다면
+    // 더미(state.tickerSearchOpen=true)에 그대로 머물렀을 것이다.
+    const stateAfterClose = await page.evaluate(() => window.history.state);
+    expect(stateAfterClose?.tickerSearchOpen).toBeFalsy();
   });
 });
