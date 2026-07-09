@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Search } from "lucide-react";
@@ -29,6 +29,7 @@ export function MobileTopBar() {
   const pathname = usePathname();
   const title = titleFor(pathname);
   const [searchOpen, setSearchOpen] = useState(false);
+  const searchButtonRef = useRef<HTMLButtonElement>(null);
 
   // 더미 히스토리 엔트리를 쌓아 안드로이드 뒤로가기가 오버레이를 닫게 한다.
   // effect가 아니라 핸들러에서 호출해야 StrictMode 이중 실행에 걸리지 않는다.
@@ -61,6 +62,7 @@ export function MobileTopBar() {
         </div>
         <div className="flex items-center gap-2">
           <button
+            ref={searchButtonRef}
             type="button"
             aria-label="티커 검색"
             onClick={openSearch}
@@ -71,7 +73,11 @@ export function MobileTopBar() {
           <CurrencyToggle compact />
         </div>
       </header>
-      <TickerSearchOverlay open={searchOpen} onClose={closeSearch} />
+      <TickerSearchOverlay
+        open={searchOpen}
+        onClose={closeSearch}
+        restoreFocusRef={searchButtonRef}
+      />
     </>
   );
 }

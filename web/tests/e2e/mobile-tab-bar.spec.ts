@@ -145,6 +145,28 @@ test.describe("ticker search overlay", () => {
     // 더미(state.tickerSearchOpen=true)에 그대로 머물렀을 것이다.
     const stateAfterClose = await page.evaluate(() => window.history.state);
     expect(stateAfterClose?.tickerSearchOpen).toBeFalsy();
+
+    // 닫으면 포커스가 돋보기 버튼으로 되돌아온다(접근성).
+    await expect(page.getByRole("button", { name: "티커 검색" })).toBeFocused();
+  });
+
+  test("오버레이 열린 채 가로(≥md)로 넓히면 body 스크롤 잠금이 풀린다", async ({
+    page,
+  }) => {
+    await login(page);
+    await page.goto("/portfolio");
+
+    await page.getByRole("button", { name: "티커 검색" }).click();
+    await expect(page.getByRole("dialog", { name: "티커 검색" })).toBeVisible();
+    // 모바일 뷰포트에서 열린 동안은 잠금이 걸려 있다.
+    expect(await page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+
+    // md(768px) 이상으로 넓히면 오버레이가 md:hidden으로 사라지고 잠금도 풀려야 한다.
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await expect(page.getByRole("dialog", { name: "티커 검색" })).toBeHidden();
+    await expect
+      .poll(() => page.evaluate(() => document.body.style.overflow))
+      .not.toBe("hidden");
   });
 
   test("종목 상세의 분석 실행 CTA는 티커를 프리필한다", async ({ page }) => {

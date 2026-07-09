@@ -12,6 +12,8 @@ type Props = {
   open: boolean;
   /** popstate가 도착했을 때만 호출된다. 닫기 버튼/Escape는 history.back()을 거친다. */
   onClose: () => void;
+  /** 닫을 때 포커스를 되돌릴 요소(돋보기 버튼). 결과 선택으로 페이지가 바뀔 때는 복원하지 않는다. */
+  restoreFocusRef?: React.RefObject<HTMLElement | null>;
 };
 
 /**
@@ -23,20 +25,48 @@ type Props = {
  * 상세 페이지로 치환한다 — push였다면 상세에서 뒤로가기를 두 번 눌러야 하고
  * 첫 번째는 화면이 안 바뀌어 고장으로 보인다.
  */
-export function TickerSearchOverlay({ open, onClose }: Props) {
+export function TickerSearchOverlay({ open, onClose, restoreFocusRef }: Props) {
   const router = useRouter();
   const [query, setQuery] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const listboxId = React.useId();
+  // 결과 선택으로 페이지가 바뀌는 경우 — 닫힘 전이에서 포커스 복원을 건너뛴다.
+  const navigatingRef = React.useRef(false);
+  const prevOpenRef = React.useRef(open);
 
   // 닫혀 있으면 빈 질의를 넘겨 원격 검색이 돌지 않게 한다.
   const { results, loading, showEmptyHint } = useTickerSearch(open ? query : "");
+
+  // md(768px) 이상에선 오버레이가 md:hidden으로 사라지므로, 그 상태에선 body 스크롤도
+  // 잠그지 않는다. 세로→가로 회전으로 뷰포트가 넓어지면 잠금이 풀려야 한다.
+  const [isDesktop, setIsDesktop] = React.useState(false);
+  React.useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const update = () => setIsDesktop(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   React.useEffect(() => {
     if (!open) return;
     setQuery("");
     setError(null);
   }, [open]);
+
+  // 닫힘 전이(open true→false)에 돋보기 버튼으로 포커스를 되돌린다.
+  // 단, 결과 선택으로 페이지가 바뀌는 경우(navigatingRef)는 새 페이지로 넘어가므로 건너뛴다.
+  React.useEffect(() => {
+    const was = prevOpenRef.current;
+    prevOpenRef.current = open;
+    if (was && !open) {
+      if (navigatingRef.current) {
+        navigatingRef.current = false;
+      } else {
+        restoreFocusRef?.current?.focus();
+      }
+    }
+  }, [open, restoreFocusRef]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -46,13 +76,13 @@ export function TickerSearchOverlay({ open, onClose }: Props) {
   }, [open, onClose]);
 
   React.useEffect(() => {
-    if (!open) return;
+    if (!open || isDesktop) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [open]);
+  }, [open, isDesktop]);
 
   // 더미 히스토리 엔트리를 반드시 소비한다. onClose를 직접 부르면 엔트리가 남는다.
   const requestClose = React.useCallback(() => {
@@ -71,6 +101,8 @@ export function TickerSearchOverlay({ open, onClose }: Props) {
   const navigate = (ticker: string) => {
     // open=false 로 인한 effect cleanup이 popstate 리스너를 뗀다.
     // router.replace는 popstate를 발생시키지 않으므로 경합이 없다.
+    // 페이지가 바뀌므로 닫힘 전이에서 돋보기로 포커스를 되돌리지 않는다.
+    navigatingRef.current = true;
     onClose();
     router.replace(`/portfolio/${encodeURIComponent(ticker)}`);
   };
