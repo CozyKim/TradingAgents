@@ -51,6 +51,11 @@ test.describe("watchlist", () => {
     const link = page.getByTestId("watchlist-link").filter({ hasText: TICKER });
     await expect(link.first()).toBeVisible();
 
+    // 티커 옆에 한글 종목명이 병기된다.
+    await expect(page.getByTestId("watchlist-link").first()).toContainText("애플", {
+      timeout: 15_000,
+    });
+
     // 4) Click → portfolio detail with from=watchlist.
     await link.first().click();
     await page.waitForURL(/\/portfolio\/AAPL\?.*from=watchlist/);

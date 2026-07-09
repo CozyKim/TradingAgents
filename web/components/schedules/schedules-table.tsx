@@ -1,13 +1,15 @@
 "use client";
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { TickerLabel } from "@/components/ui/ticker-label";
 import {
   useDeleteSchedule,
   useRunScheduleNow,
   useUpdateSchedule,
 } from "@/hooks/use-schedules";
+import { useTickerNames } from "@/hooks/use-ticker-names";
 import { Schedule } from "@/lib/schedules";
 import { formatKST, humanizeCron } from "@/lib/datetime";
 
@@ -28,6 +30,8 @@ export function SchedulesTable({ rows }: { rows: Schedule[] }) {
   const del = useDeleteSchedule();
   const run = useRunScheduleNow();
   const [editingId, setEditingId] = useState<number | null>(null);
+  const tickers = useMemo(() => rows.map((s) => s.ticker), [rows]);
+  const { nameOf } = useTickerNames(tickers);
 
   if (rows.length === 0)
     return (
@@ -55,7 +59,9 @@ export function SchedulesTable({ rows }: { rows: Schedule[] }) {
               <Fragment key={s.id}>
                 <tr className="border-b border-border-1 hover:bg-bg-2">
                   <td className="py-2">{s.name}</td>
-                  <td className="font-mono text-xs">{s.ticker}</td>
+                  <td className="text-xs">
+                    <TickerLabel ticker={s.ticker} name={nameOf(s.ticker)} />
+                  </td>
                   <td className="text-xs">
                     <div>
                       {humanizeCron(s.cron_expr, { tzLabel: tzLabel(s.timezone) })}
