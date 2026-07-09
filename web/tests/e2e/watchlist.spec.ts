@@ -51,8 +51,8 @@ test.describe("watchlist", () => {
     const link = page.getByTestId("watchlist-link").filter({ hasText: TICKER });
     await expect(link.first()).toBeVisible();
 
-    // 티커 옆에 한글 종목명이 병기된다.
-    await expect(page.getByTestId("watchlist-link").first()).toContainText("애플", {
+    // 티커 옆에 한글 종목명이 병기된다 (AAPL → 애플, 실제 Naver 해석).
+    await expect(link.first()).toContainText("애플", {
       timeout: 15_000,
     });
 
