@@ -1,9 +1,12 @@
 "use client";
+import { useMemo } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { Holding } from "@/lib/holdings";
 import { RunListItem } from "@/lib/runs";
 import { SignalBadge } from "@/components/shared/signal-badge";
+import { TickerLabel } from "@/components/ui/ticker-label";
+import { useTickerNames } from "@/hooks/use-ticker-names";
 import { formatKST } from "@/lib/datetime";
 
 export function PortfolioSignals({
@@ -13,6 +16,8 @@ export function PortfolioSignals({
   holdings: Holding[];
   latestByTicker: Record<string, RunListItem | undefined>;
 }) {
+  const tickers = useMemo(() => holdings.map((h) => h.ticker), [holdings]);
+  const { nameOf } = useTickerNames(tickers);
   if (holdings.length === 0)
     return (
       <div className="flex flex-col items-start gap-3 py-2">
@@ -42,9 +47,12 @@ export function PortfolioSignals({
               </div>
               <div className="flex flex-1 flex-col">
                 <div className="flex items-center gap-2">
-                  <span className="text-[15px] font-bold tracking-[-0.02em] text-text-1">
-                    {h.ticker}
-                  </span>
+                  <TickerLabel
+                    ticker={h.ticker}
+                    name={nameOf(h.ticker)}
+                    className="min-w-0 text-[15px] tracking-[-0.02em] text-text-1"
+                    nameClassName="font-bold"
+                  />
                   {r?.decision && <SignalBadge decision={r.decision} />}
                 </div>
                 <div className="font-num text-[12.5px] text-text-3">
