@@ -12,17 +12,19 @@ export function TickerLabel({
   ticker,
   name,
   className = "",
+  nameClassName = "font-medium",
 }: {
   ticker: string;
   name?: string;
   className?: string;
+  nameClassName?: string;
 }) {
   if (!name) {
-    return <span className={`font-mono font-medium ${className}`}>{ticker}</span>;
+    return <span className={`font-mono ${nameClassName} ${className}`}>{ticker}</span>;
   }
   return (
     <span className={`inline-flex min-w-0 items-baseline gap-1.5 ${className}`}>
-      <span className="truncate font-medium">{name}</span>
+      <span className={`truncate ${nameClassName}`}>{name}</span>
       <span className="shrink-0 font-mono text-xs text-text-3">{ticker}</span>
     </span>
   );

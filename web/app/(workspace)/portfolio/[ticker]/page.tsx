@@ -62,7 +62,7 @@ export default function PortfolioDetail() {
     <div className="px-4 md:px-6 py-6 md:py-8 max-w-screen-xl mx-auto space-y-6">
       <div className="flex items-baseline gap-3">
         <h1 className="text-2xl font-bold">
-          <TickerLabel ticker={ticker} name={nameOf(ticker)} />
+          <TickerLabel ticker={ticker} name={nameOf(ticker)} nameClassName="font-bold" />
         </h1>
         <Link href={back.href} className="text-xs text-text-3 hover:underline">
           {back.label}
