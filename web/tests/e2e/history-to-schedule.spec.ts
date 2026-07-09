@@ -34,8 +34,9 @@ test.describe("history → schedule prefill", () => {
 
     // 1) Create one analysis run via /run so /history has data.
     await page.goto("/run");
+    // exact 매칭. /티커/i 부분일치는 상단바 "티커 검색" 버튼까지 잡아 strict 위반이 난다.
     await page
-      .getByLabel(/티커/i)
+      .getByLabel("티커", { exact: true })
       .fill(TICKER);
     // Combobox: confirm the AAPL option to seed the ticker state.
     await page.keyboard.press("Enter");

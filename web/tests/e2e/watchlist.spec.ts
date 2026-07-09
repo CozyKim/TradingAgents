@@ -32,7 +32,8 @@ test.describe("watchlist", () => {
 
     // 1) Create one analysis run so /history has a row to track.
     await page.goto("/run");
-    await page.getByLabel(/티커/i).fill(TICKER);
+    // exact 매칭. /티커/i 부분일치는 상단바 "티커 검색" 버튼까지 잡아 strict 위반이 난다.
+    await page.getByLabel("티커", { exact: true }).fill(TICKER);
     await page.keyboard.press("Enter");
     await page.getByRole("button", { name: /분석 실행하기/ }).click();
     await page.waitForURL(/\/run\/[^/]+/, { timeout: 15_000 });
