@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TickerCombobox } from "@/components/ui/ticker-combobox";
 import { useCreateHolding } from "@/hooks/use-holdings";
+import { currencyForTicker } from "@/lib/currency";
 
 export function HoldingForm({ onCreated }: { onCreated?: () => void }) {
   const [ticker, setTicker] = useState("");
@@ -12,6 +13,7 @@ export function HoldingForm({ onCreated }: { onCreated?: () => void }) {
   const [avg, setAvg] = useState("");
   const [notes, setNotes] = useState("");
   const m = useCreateHolding();
+  const avgCurrency = currencyForTicker(ticker);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,7 +61,7 @@ export function HoldingForm({ onCreated }: { onCreated?: () => void }) {
         />
       </div>
       <div>
-        <Label htmlFor="avg">Avg cost (USD)</Label>
+        <Label htmlFor="avg">Avg cost ({avgCurrency})</Label>
         <Input
           id="avg"
           type="number"
@@ -67,6 +69,7 @@ export function HoldingForm({ onCreated }: { onCreated?: () => void }) {
           min="0"
           required
           value={avg}
+          placeholder={avgCurrency === "KRW" ? "75000" : "185.50"}
           onChange={(e) => setAvg(e.target.value)}
         />
       </div>
