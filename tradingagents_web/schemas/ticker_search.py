@@ -18,3 +18,9 @@ class TickerSearchResponse(BaseModel):
     """Envelope for /api/tickers/search."""
 
     results: list[TickerSearchResult]
+
+
+class TickerNamesResponse(BaseModel):
+    """Envelope for /api/tickers/names. 해석 실패한 티커는 키가 없다."""
+
+    names: dict[str, str]

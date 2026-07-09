@@ -33,3 +33,16 @@ def test_session_links_to_user() -> None:
     db.add(sess)
     db.commit()
     assert sess.user_id == user.id
+
+
+def test_ticker_name_roundtrip(db_session):
+    """ticker_names는 티커를 PK로 표시명을 보관한다."""
+    from tradingagents_web.models import TickerName
+
+    db_session.add(TickerName(ticker="005930.KS", name="삼성전자"))
+    db_session.commit()
+
+    row = db_session.get(TickerName, "005930.KS")
+    assert row is not None
+    assert row.name == "삼성전자"
+    assert row.updated_at is not None

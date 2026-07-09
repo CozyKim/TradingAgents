@@ -8,9 +8,11 @@ import { useHoldings } from "@/hooks/use-holdings";
 import { useRunList } from "@/hooks/use-runs";
 import { usePriceHistory } from "@/hooks/use-price-history";
 import { useChartSettings } from "@/hooks/use-chart-settings";
+import { useTickerNames } from "@/hooks/use-ticker-names";
 import { CandleChart, type SignalMarker } from "@/components/portfolio/candle-chart";
 import { QtyCell, AvgCostCell } from "@/components/portfolio/qty-cell";
 import { SignalBadge } from "@/components/shared/signal-badge";
+import { TickerLabel } from "@/components/ui/ticker-label";
 import { useCurrency, formatPrice, currencyForTicker } from "@/lib/currency";
 
 export default function PortfolioDetail() {
@@ -29,6 +31,8 @@ export default function PortfolioDetail() {
   const ctx = useCurrency();
   // 이 종목의 거래소 원본 통화(한국=원, 그 외=달러). 모든 가격 표시의 기준.
   const cur = currencyForTicker(ticker);
+  const tickerList = useMemo(() => [ticker], [ticker]);
+  const { nameOf } = useTickerNames(tickerList);
 
   const holding = holdings?.items.find((h) => h.ticker === ticker);
 
@@ -59,7 +63,9 @@ export default function PortfolioDetail() {
     <div className="px-4 md:px-6 py-6 md:py-8 max-w-screen-xl mx-auto space-y-6">
       <div className="flex items-baseline justify-between gap-3">
         <div className="flex items-baseline gap-3">
-          <h1 className="text-2xl font-bold font-mono">{ticker}</h1>
+          <h1 className="text-2xl font-bold">
+            <TickerLabel ticker={ticker} name={nameOf(ticker)} nameClassName="font-bold" />
+          </h1>
           <Link href={back.href} className="text-xs text-text-3 hover:underline">
             {back.label}
           </Link>

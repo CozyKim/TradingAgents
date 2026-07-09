@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePriceHistory } from "@/hooks/use-price-history";
 import { useCurrency, formatPrice, currencyForTicker } from "@/lib/currency";
 import type { WatchlistItem } from "@/lib/watchlist";
+import { TickerLabel } from "@/components/ui/ticker-label";
 
 /** 직전 종가 대비 등락%를 계산한다. 데이터가 부족하면 null. */
 function changePct(points: { close: number }[], last: number | null): number | null {
@@ -13,7 +14,7 @@ function changePct(points: { close: number }[], last: number | null): number | n
   return ((last - prev) / prev) * 100;
 }
 
-export function WatchlistRow({ item }: { item: WatchlistItem }) {
+export function WatchlistRow({ item, name }: { item: WatchlistItem; name?: string }) {
   const { ticker, scheduleCount } = item;
   // days=5: 현재가 + 직전 종가 등락 계산에 충분한 경량 호출. React Query 캐시 공유.
   const { data, isLoading, isError } = usePriceHistory(ticker, 5);
@@ -28,10 +29,10 @@ export function WatchlistRow({ item }: { item: WatchlistItem }) {
       <td className="py-2">
         <Link
           href={`/portfolio/${encodeURIComponent(ticker)}?from=watchlist`}
-          className="font-mono text-sm text-accent hover:underline"
+          className="text-sm text-accent hover:underline"
           data-testid="watchlist-link"
         >
-          {ticker}
+          <TickerLabel ticker={ticker} name={name} />
         </Link>
       </td>
       <td className="text-right font-mono tabular-nums text-sm">
